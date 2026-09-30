@@ -1,6 +1,6 @@
 
 # HelloAgents 第八章配套讲解材料（记忆与 RAG）
-本文件夹包含 [HelloAgents](https://github.com/datawhalechina/Hello-Agents) 课程**第八章：记忆与检索增强（Memory & RAG）**讲解视频的配套讲解网页（HTML 幻灯片）与 PDF 讲义。
+本文件夹包含 [HelloAgents](https://github.com/datawhalechina/Hello-Agents) 课程**第八章：记忆与检索增强（Memory & RAG**讲解视频的配套讲解网页（HTML 幻灯片）与 PDF 讲义。
 ## 📁 目录结构
 ```
 HelloAgents-Memeory-HTML/
