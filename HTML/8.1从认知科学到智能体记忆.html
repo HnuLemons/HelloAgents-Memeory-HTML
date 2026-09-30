@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>从认知科学到智能体记忆 · HelloAgents 8.1（v1）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@400;500&family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:ital,opsz,wght@1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:      #F1ECDE;
+    --paper-deep: #E6DCC4;
+    --ink:        #1A1A18;
+    --ink-2:      #736D5A;
+    --teal:       #1B4B5A;
+    --hairline:   #C8BEA4;
+    --amber:      #E8C468;
+    --serif: "Noto Serif SC", "Source Serif 4", serif;
+    --sans:  "Noto Sans SC", sans-serif;
+    --mono:  "JetBrains Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 幻灯片引擎：铺满整个视口 ---------- */
+  #stage { position: fixed; inset: 0; }
+  .slide {
+    position: absolute; inset: 0;
+    padding: clamp(48px, 7vh, 88px) clamp(40px, 6vw, 120px);
+    display: none;
+    flex-direction: column;
+    text-wrap: pretty;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; animation: fade 0.7s ease; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .slide.active { animation: none; } }
+
+  /* ---------- 通用元素 ---------- */
+  .kicker {
+    font-family: var(--sans);
+    font-size: clamp(13px, 1.1vw, 20px); font-weight: 500;
+    letter-spacing: 0.14em;
+    color: var(--teal);
+  }
+  .slide h2 { font-size: clamp(34px, 3.4vw, 64px); font-weight: 700; margin: 1.2vh 0 0.8vh; }
+  .slide .sub { font-size: clamp(18px, 1.6vw, 30px); color: var(--ink-2); max-width: 80%; }
+  .pagenum {
+    position: absolute; bottom: clamp(24px, 4vh, 48px); left: clamp(40px, 6vw, 120px);
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 18px); color: var(--ink-2);
+  }
+
+  /* ---------- 封面 ---------- */
+  .s-title { justify-content: center; }
+  .s-title h1 { font-size: clamp(56px, 6.8vw, 128px); font-weight: 900; line-height: 1.2; margin: 3vh 0 4vh; }
+  .s-title .dek { font-size: clamp(19px, 1.7vw, 32px); color: var(--ink-2); }
+  .s-title .dek em { font-family: "Source Serif 4", var(--serif); font-style: italic; color: var(--teal); }
+  .s-title .speaker {
+    margin-top: 7vh;
+    font-family: var(--sans); font-size: clamp(15px, 1.25vw, 23px);
+    letter-spacing: 0.12em;
+    display: inline-block; align-self: flex-start;
+    background: var(--amber); color: var(--ink);
+    padding: 0.35em 0.8em;
+  }
+
+  /* ---------- 五阶段 / 阶段卡片 ---------- */
+  .stages { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 6vh; }
+  .stage { padding: 0 clamp(14px, 1.5vw, 28px); border-left: 1px solid var(--hairline); }
+  .stage:first-child { border-left: none; padding-left: 0; }
+  .stage .n { font-family: var(--mono); font-size: clamp(12px, 1vw, 18px); color: var(--teal); display: block; margin-bottom: 2vh; }
+  .stage h3 { font-size: clamp(24px, 2.1vw, 40px); font-weight: 700; margin-bottom: 1vh; }
+  .stage p { font-size: clamp(15px, 1.2vw, 23px); color: var(--ink-2); line-height: 1.6; }
+
+  .stages.tall {
+    flex: 1; min-height: 0;
+    margin-top: 4vh; margin-bottom: 6vh;
+    gap: clamp(12px, 1.2vw, 24px);
+  }
+  .stages.tall .stage {
+    display: flex; flex-direction: column;
+    background: var(--paper-deep);
+    border-left: none;
+    padding: clamp(24px, 3.5vh, 48px) clamp(16px, 1.5vw, 28px);
+  }
+  .stages.tall .stage:first-child { padding-left: clamp(16px, 1.5vw, 28px); }
+  .stages.tall .stage .n { margin-bottom: auto; }
+  .stages.tall .stage h3 { font-size: clamp(32px, 2.8vw, 52px); margin-top: auto; margin-bottom: 1.6vh; }
+  .stages.tall .stage p { margin-bottom: auto; }
+  .stages.tall .stage .map {
+    margin-top: auto; padding-top: 1.6vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 四宫格 ---------- */
+  .memory-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--hairline); border: 1px solid var(--hairline);
+    margin-top: 4vh; flex: 1; min-height: 0;
+  }
+  .memory-cell { background: var(--paper); padding: clamp(20px, 4vh, 44px) clamp(24px, 2.5vw, 48px); display: flex; flex-direction: column; }
+  .memory-cell .tag { font-family: var(--mono); font-size: clamp(13px, 1.1vw, 19px); color: var(--teal); display: block; margin-bottom: auto; }
+  .memory-cell h3 { font-size: clamp(24px, 2vw, 38px); font-weight: 700; margin-bottom: 1.2vh; }
+  .memory-cell p { font-size: clamp(16px, 1.3vw, 24px); color: var(--ink-2); line-height: 1.65; margin-bottom: auto; }
+  .memory-cell .meta {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal);
+  }
+
+  /* ---------- 三列详情 ---------- */
+  .detail-cols {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    flex: 1; min-height: 0; margin-top: 3vh;
+  }
+  .detail-cols .col {
+    padding: 0 clamp(18px, 2vw, 40px);
+    border-left: 1px solid var(--hairline);
+    display: flex; flex-direction: column;
+  }
+  .detail-cols .col:first-child { border-left: none; padding-left: 0; }
+  .detail-cols .lbl {
+    font-family: var(--sans); font-size: clamp(13px, 1.05vw, 20px);
+    color: var(--ink-2); letter-spacing: 0.08em; margin-bottom: auto;
+  }
+  .detail-cols .col > p { font-size: clamp(18px, 1.55vw, 28px); line-height: 1.65; margin-bottom: auto; }
+  .detail-cols .mech {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 双栏对比 ---------- */
+  .pair {
+    display: grid; grid-template-columns: 1fr 1fr; gap: clamp(16px, 2vw, 36px);
+    margin-top: 4vh; flex: 1; min-height: 0;
+  }
+  .pair .col {
+    background: var(--paper-deep);
+    padding: clamp(24px, 4vh, 48px) clamp(24px, 2.5vw, 48px);
+    display: flex; flex-direction: column;
+  }
+  .pair .col .tag { font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px); color: var(--teal); display: block; margin-bottom: auto; letter-spacing: 0.1em; }
+  .pair .col h3 { font-size: clamp(28px, 2.4vw, 44px); font-weight: 700; margin: 1vh 0 1.4vh; }
+  .pair .col p { font-size: clamp(17px, 1.4vw, 26px); color: var(--ink-2); line-height: 1.65; margin-bottom: auto; }
+  .pair .col .mech {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(14px, 1.15vw, 20px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 代码块 ---------- */
+  .code-block {
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); line-height: 1.75;
+    padding: clamp(24px, 3.5vh, 44px) clamp(28px, 3vw, 56px); margin-top: 3vh;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+    overflow: hidden; white-space: pre;
+  }
+  .code-block .cm { color: var(--hairline); }
+  .code-block .hl { color: var(--amber); }
+
+  /* ---------- 完整代码按钮 / 展开条 ---------- */
+  .code-btn {
+    align-self: flex-start;
+    margin-top: 2.5vh;
+    font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px);
+    color: var(--ink); background: transparent;
+    border: 1px solid var(--ink); padding: 1.2vh 1.6vw;
+    cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .code-btn:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .expand-bar {
+    background: var(--paper-deep);
+    margin-top: 3vh; padding: 1.8vh clamp(20px, 2vw, 40px);
+    display: flex; align-items: center; gap: 2vw;
+  }
+  .expand-bar .lbl {
+    font-family: var(--sans); font-size: clamp(13px, 1vw, 18px);
+    color: var(--ink-2); letter-spacing: 0.06em;
+  }
+  .expand-bar .code-btn { margin-top: 0; margin-left: auto; }
+
+  /* ---------- 代码弹窗 ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(26, 26, 24, 0.55);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal.open { display: flex; }
+  .modal-panel {
+    background: var(--paper);
+    width: min(1240px, 88vw); max-height: 86vh;
+    border: 1px solid var(--ink);
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.3);
+    display: flex; flex-direction: column;
+  }
+  .modal-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 24px;
+    padding: 2vh 2.5vw; border-bottom: 1px solid var(--hairline);
+  }
+  .modal-title { font-size: clamp(17px, 1.4vw, 26px); font-weight: 700; }
+  .modal-title span { font-family: var(--mono); font-size: 0.7em; color: var(--teal); font-weight: 400; margin-left: 12px; }
+  .modal-close {
+    border: 1px solid var(--ink-2); background: transparent; color: var(--ink);
+    width: 44px; height: 44px; font-size: 22px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .modal-close:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .modal-code {
+    flex: 1; overflow: auto;
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: clamp(12px, 0.95vw, 16px); line-height: 1.7;
+    padding: 3vh 2.5vw; white-space: pre;
+  }
+  /* Python 语法高亮 */
+  .tk-cm { color: var(--hairline); font-style: italic; }
+  .tk-str { color: #7FB3C4; }
+  .tk-kw { color: var(--amber); }
+  .tk-num { color: #F0DCAE; }
+
+  /* ---------- 流向图 ---------- */
+  .flow { display: flex; align-items: center; justify-content: center; gap: clamp(16px, 2vw, 40px); margin-top: 4vh; }
+  .flow .node {
+    border: 1px solid var(--ink); padding: 2.2vh clamp(20px, 2vw, 40px);
+    text-align: center; background: var(--paper);
+  }
+  .flow .node b { display: block; font-size: clamp(20px, 1.8vw, 32px); font-weight: 700; white-space: nowrap; }
+  .flow .node span { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--ink-2); }
+  .flow .edge { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .flow .edge .cond { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); }
+  .flow .edge .line { width: clamp(48px, 5vw, 96px); height: 1px; background: var(--ink); position: relative; }
+  .flow .edge .line::after {
+    content: ""; position: absolute; right: 0; top: -5px;
+    border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent;
+    border-left: 9px solid var(--ink);
+  }
+
+  /* ---------- 节点图：人类记忆层次 ---------- */
+  .hier {
+    flex: 1; min-height: 0; margin-top: 3vh; margin-bottom: 2vh;
+    display: flex; flex-direction: column; gap: clamp(10px, 1.2vh, 18px); justify-content: center;
+  }
+  .hier-row { display: grid; align-items: stretch; gap: clamp(10px, 1vw, 18px); }
+  .hier-row.row-main { grid-template-columns: 1fr 1fr 1fr; }
+  .hier-row.row-sub { grid-template-columns: repeat(3, 1fr); }
+  .hier-node {
+    border: 1px solid var(--ink); background: var(--paper);
+    padding: 1.8vh clamp(12px, 1.2vw, 24px); text-align: center;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  .hier-node b { font-size: clamp(20px, 1.7vw, 32px); font-weight: 700; }
+  .hier-node span { font-family: var(--mono); font-size: clamp(11px, 0.9vw, 16px); color: var(--ink-2); letter-spacing: 0.06em; display: block; margin-top: 4px; }
+  .hier-node .dur { font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px); color: var(--teal); display: block; margin-top: 8px; }
+  .hier-node .meta { font-size: clamp(13px, 1.05vw, 18px); color: var(--ink-2); margin-top: 6px; line-height: 1.5; }
+  .hier-node.hub { background: var(--paper-deep); border-width: 2px; }
+  .hier-node.declarative { border-style: dashed; }
+  .hier-arrow {
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: clamp(13px, 1.05vw, 18px); color: var(--teal);
+  }
+  .hier-arrow::before { content: "↓"; }
+  .hier-bridge {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; gap: clamp(8px, 1vw, 16px);
+  }
+  .hier-bridge .hier-arrow { font-size: clamp(20px, 1.6vw, 28px); }
+  .hier-bridge .hier-arrow::before { content: "↓"; }
+
+  .hier { align-self: stretch; }
+  .formula-note {
+    margin-top: 1.2vh;
+    font-family: var(--mono); font-size: clamp(13px, 1.1vw, 18px); color: var(--teal);
+    text-align: center;
+    padding-top: 1.2vh;
+    border-top: 1px solid var(--hairline);
+    letter-spacing: 0.04em;
+  }
+
+  /* ---------- 双轨架构 ---------- */
+  .twotrack {
+    flex: 1; min-height: 0; margin-top: 2vh;
+    display: grid; grid-template-columns: 1fr 1fr; gap: clamp(14px, 1.4vw, 28px);
+  }
+  .twotrack .lane {
+    background: var(--paper-deep);
+    padding: clamp(20px, 3.5vh, 40px) clamp(20px, 2vw, 40px);
+    display: flex; flex-direction: column;
+    border: 1px solid var(--hairline);
+  }
+  .twotrack .lane .lbl {
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal);
+    letter-spacing: 0.1em; display: block; margin-bottom: auto;
+  }
+  .twotrack .lane h3 { font-size: clamp(28px, 2.4vw, 44px); font-weight: 700; margin: 1.2vh 0 1.6vh; }
+  .twotrack .lane p { font-size: clamp(17px, 1.45vw, 26px); line-height: 1.65; margin-bottom: auto; }
+  .twotrack .lane .role {
+    margin-top: auto; padding-top: 1.6vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(14px, 1.15vw, 20px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 参数注解条（重点方法页） ---------- */
+  .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(12px, 1.2vw, 24px); margin-top: 2vh; }
+  .notes .note { border-top: 1px solid var(--hairline); padding-top: 1.2vh; }
+  .notes .note b { display: block; font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px); color: var(--teal); margin-bottom: 0.6vh; font-weight: 600; }
+  .notes .note p { font-size: clamp(13px, 1.05vw, 19px); color: var(--ink-2); line-height: 1.55; }
+
+  /* ---------- 中段填白容器 ---------- */
+  .middle-grow { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+
+  /* ---------- 路线图 / 章节地图 ---------- */
+  .roadmap {
+    margin-top: auto;
+    border-top: 1px solid var(--hairline);
+    padding-top: 2vh;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(10px, 1vw, 18px);
+  }
+  .roadmap .step {
+    display: flex; flex-direction: column;
+    padding: clamp(12px, 1.8vh, 24px) clamp(12px, 1.2vw, 20px);
+    border-left: 1px solid var(--hairline);
+  }
+  .roadmap .step:first-child { border-left: none; padding-left: 0; }
+  .roadmap .step .num { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); letter-spacing: 0.08em; display: block; margin-bottom: 0.8vh; }
+  .roadmap .step b { font-size: clamp(17px, 1.4vw, 26px); font-weight: 700; display: block; margin-bottom: 0.6vh; }
+  .roadmap .step p { font-size: clamp(13px, 1.05vw, 18px); color: var(--ink-2); line-height: 1.55; }
+
+  /* ---------- 对比卡：闭卷 vs 开卷 ---------- */
+  .compare {
+    margin-top: 3vh; flex: 1; min-height: 0;
+    display: grid; grid-template-columns: 1fr auto 1fr; gap: clamp(14px, 1.4vw, 28px); align-items: stretch;
+  }
+  .compare .card {
+    background: var(--paper-deep);
+    padding: clamp(20px, 3.5vh, 40px) clamp(20px, 2vw, 36px);
+    display: flex; flex-direction: column;
+  }
+  .compare .card.before .tag { color: var(--ink-2); }
+  .compare .card .tag { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); letter-spacing: 0.1em; display: block; margin-bottom: auto; color: var(--teal); }
+  .compare .card h3 { font-size: clamp(28px, 2.4vw, 44px); font-weight: 700; margin: 1.2vh 0 1.4vh; }
+  .compare .card p { font-size: clamp(16px, 1.3vw, 24px); color: var(--ink-2); line-height: 1.65; margin-bottom: auto; }
+  .compare .card .mech {
+    margin-top: auto; padding-top: 1.6vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(13px, 1.1vw, 20px); color: var(--teal); line-height: 1.6;
+  }
+  .compare .arrow {
+    align-self: center;
+    font-family: var(--mono); font-size: clamp(22px, 1.8vw, 36px); color: var(--ink-2);
+    letter-spacing: 0.1em;
+  }
+  .compare .arrow::before { content: "→"; }
+
+  /* ---------- 收尾 ---------- */
+  .s-closing { justify-content: center; text-align: center; align-items: center; }
+  .s-closing blockquote { font-size: clamp(30px, 3vw, 56px); font-weight: 600; line-height: 1.6; margin-top: 4vh; }
+
+  /* ---------- 翻页控件 ---------- */
+  #nav {
+    position: fixed; bottom: 24px; right: 32px; z-index: 10;
+    display: flex; gap: 12px; align-items: center;
+  }
+  #counter {
+    font-family: var(--mono); font-size: 15px; color: var(--ink-2);
+    min-width: 72px; text-align: center;
+  }
+  #nav button {
+    width: 52px; height: 52px;
+    border: 1px solid var(--ink-2); background: transparent;
+    cursor: pointer; transition: background 0.2s, border-color 0.2s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #nav button:hover { background: var(--teal); border-color: var(--teal); }
+  .arrow { width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+  .arrow.prev { border-right: 13px solid var(--ink); }
+  .arrow.next { border-left: 13px solid var(--ink); }
+  #nav button:hover .arrow.prev { border-right-color: var(--paper); }
+  #nav button:hover .arrow.next { border-left-color: var(--paper); }
+
+  /* ---------- 打印 / 导出 PDF（必须放样式表末尾） ---------- */
+  @page { size: 406.4mm 228.6mm; margin: 0; }
+  @media print {
+    body { overflow: visible; }
+    #stage { position: static; }
+    .slide {
+      position: relative; inset: auto;
+      display: flex !important; animation: none;
+      width: 100vw; height: 100vh;
+      page-break-after: always; break-after: page;
+      overflow: hidden;
+    }
+    .slide:last-of-type { page-break-after: auto; break-after: auto; }
+    #nav, .modal, .code-btn { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <!-- 01 封面 -->
+  <section class="slide s-title active" data-screen-label="01 Title">
+    <span class="kicker">HELLOAGENTS · 第八章 记忆与检索 · 8.1</span>
+    <h1>从认知科学到<br>智能体记忆</h1>
+    <p class="dek">先看清人脑怎么记，再为 Agent 造一套<em>完整的记忆系统。</em></p>
+    <p class="speaker">主讲人：柠檬酸</p>
+    <span class="pagenum">01</span>
+  </section>
+
+  <!-- 02 章节导入 -->
+  <section class="slide" data-screen-label="02 章节导入">
+    <span class="kicker">第八章 · 记忆与检索</span>
+    <h2>Agent 也要记性</h2>
+    <p class="sub">前面章节里 Agent 能调用工具、能规划任务，但它有一个致命的短板——每次对话结束，它就什么都忘了。这一节我们先看人类怎么记忆，再把它翻译成可工程化的智能体记忆系统。</p>
+    <div class="middle-grow">
+      <div class="flow">
+        <div class="node"><b>认知科学</b><span>人类记忆如何分层</span></div>
+        <div class="edge"><span class="cond">借鉴</span><span class="line"></span></div>
+        <div class="node"><b>智能体局限</b><span>对话遗忘 · 知识局限</span></div>
+        <div class="edge"><span class="cond">设计</span><span class="line"></span></div>
+        <div class="node"><b>HelloAgents 架构</b><span>记忆系统 + RAG 系统</span></div>
+      </div>
+    </div>
+    <div class="roadmap">
+      <div class="step"><span class="num">8.1.1</span><b>认知科学启发</b><p>人类记忆如何分层，启发 Agent 设计</p></div>
+      <div class="step"><span class="num">8.1.2</span><b>为何需要记忆与 RAG</b><p>LLM 两大根本性局限</p></div>
+      <div class="step"><span class="num">8.1.3</span><b>系统架构设计</b><p>记忆系统 + RAG 系统双轨</p></div>
+      <div class="step"><span class="num">8.1.4</span><b>学习目标与快速体验</b><p>30 秒上手 + 项目结构</p></div>
+    </div>
+    <span class="pagenum">02</span>
+  </section>
+
+  <!-- 03 人类记忆层次结构（图8.1） -->
+  <section class="slide" data-screen-label="03 人类记忆层次">
+    <span class="kicker">8.1.1 · 认知科学模型</span>
+    <h2>人类记忆的层次结构</h2>
+    <p class="sub">认知心理学把记忆分成三层，每一层都有自己的容量、寿命、用途</p>
+    <div class="hier">
+      <div class="hier-row row-main">
+        <div class="hier-node">
+          <b>感觉记忆</b>
+          <span>SENSORY MEMORY</span>
+          <div class="dur">0.5 – 3 秒</div>
+          <div class="meta">容量巨大，保存感官接收到的全部信息</div>
+        </div>
+        <div class="hier-node">
+          <b>工作记忆</b>
+          <span>WORKING MEMORY</span>
+          <div class="dur">15 – 30 秒 · 7±2 项</div>
+          <div class="meta">负责当前任务的信息处理</div>
+        </div>
+        <div class="hier-node hub">
+          <b>长期记忆</b>
+          <span>LONG-TERM MEMORY</span>
+          <div class="dur">可达终生 · 容量近无限</div>
+          <div class="meta">细分为程序性 / 陈述性</div>
+        </div>
+      </div>
+      <div class="hier-arrow"></div>
+      <div class="hier-row row-sub">
+        <div class="hier-node declarative">
+          <b>程序性</b>
+          <span>PROCEDURAL</span>
+          <div class="meta">技能与习惯（如骑自行车）</div>
+        </div>
+        <div class="hier-node declarative">
+          <b>语义记忆</b>
+          <span>SEMANTIC</span>
+          <div class="meta">一般知识与概念（"巴黎是法国首都"）</div>
+        </div>
+        <div class="hier-node declarative">
+          <b>情景记忆</b>
+          <span>EPISODIC</span>
+          <div class="meta">个人经历与事件（"昨天的会议"）</div>
+        </div>
+      </div>
+      <div class="formula-note">三类核心 + 程序性记忆 → 共四类长期记忆子类型</div>
+    </div>
+    <span class="pagenum">03</span>
+  </section>
+
+  <!-- 04 智能体的两大根本局限 -->
+  <section class="slide" data-screen-label="04 两大局限">
+    <span class="kicker">8.1.2 · 两大根本性局限</span>
+    <h2>LLM 的两个短板</h2>
+    <p class="sub">借鉴人类记忆，我们可以看清 LLM 智能体为什么必须外挂记忆与检索</p>
+    <div class="pair">
+      <div class="col">
+        <span class="tag">LIMITATION 1</span>
+        <h3>对话状态的遗忘</h3>
+        <p>LLM 本身是无状态的——每一次请求都是独立的计算，不会自动"记住"上一轮内容。</p>
+        <div class="mech">后果：上下文丢失 · 个性化缺失 · 学习能力受限 · 前后矛盾</div>
+      </div>
+      <div class="col">
+        <span class="tag">LIMITATION 2</span>
+        <h3>内置知识的局限</h3>
+        <p>LLM 的知识是静态、有限的，全部来自训练数据——天然带截止时间和覆盖面。</p>
+        <div class="mech">后果：时效性差 · 专业深度不足 · 容易幻觉 · 缺少来源</div>
+      </div>
+    </div>
+    <span class="pagenum">04</span>
+  </section>
+
+  <!-- 05 局限一·无状态导致的对话遗忘（代码） -->
+  <section class="slide" data-screen-label="05 局限一·对话遗忘">
+    <span class="kicker">8.1.2 · 局限 1/2 · 对话遗忘</span>
+    <h2>无状态：模型不会自动"记住"</h2>
+    <p class="sub">每次请求都是独立的——这直接导致上下文丢失、个性化缺失、学习能力受限</p>
+    <div class="code-block"><span class="cm"># 第七章的 Agent 使用方式</span>
+from hello_agents import SimpleAgent, HelloAgentsLLM
+agent = SimpleAgent(name=<span class="hl">"学习助手"</span>, llm=HelloAgentsLLM())
+
+<span class="cm"># 第一次对话</span>
+response1 = agent.run(<span class="hl">"我叫张三，正在学习Python，目前掌握了基础语法"</span>)
+<span class="cm"># 第二次对话（新的会话）</span>
+response2 = agent.run(<span class="hl">"你还记得我的学习进度吗？"</span>)
+<span class="cm"># → "抱歉，我不知道您的学习进度..."</span></div>
+    <div class="expand-bar">
+      <span class="lbl">要解决这个短板，HelloAgents 引入记忆系统</span>
+      <button class="code-btn" data-modal="m-stateless">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">05</span>
+  </section>
+
+  <!-- 06 局限二·内置知识的局限性 -->
+  <section class="slide" data-screen-label="06 局限二·知识局限">
+    <span class="kicker">8.1.2 · 局限 2/2 · 知识局限</span>
+    <h2>静态知识：截止时间 + 覆盖面</h2>
+    <div class="memory-grid">
+      <div class="memory-cell">
+        <span class="tag">时效性</span><h3>训练截止</h3>
+        <p>大模型的训练数据有截止点，无法获取最新信息——昨天的新闻它听都没听过</p>
+        <div class="meta">用实时检索补</div>
+      </div>
+      <div class="memory-cell">
+        <span class="tag">深度</span><h3>专业领域</h3>
+        <p>通用模型在垂直领域（医学、法律、论文）深度知识可能不足——样样通、样样松</p>
+        <div class="meta">用专业语料补</div>
+      </div>
+      <div class="memory-cell">
+        <span class="tag">事实</span><h3>幻觉风险</h3>
+        <p>模型可能编造看似合理但并不存在的事实——"一本正经地说错话"</p>
+        <div class="meta">用检索验证补</div>
+      </div>
+      <div class="memory-cell">
+        <span class="tag">来源</span><h3>可解释性</h3>
+        <p>直接问 LLM 它答不出"为什么这么说"，只能凭训练权重编一条最像的</p>
+        <div class="meta">用引用追溯补</div>
+      </div>
+    </div>
+    <span class="pagenum">06</span>
+  </section>
+
+  <!-- 07 RAG 核心思想 -->
+  <section class="slide" data-screen-label="07 RAG 核心思想">
+    <span class="kicker">8.1.2 · 解决方案</span>
+    <h2>RAG：检索增强生成</h2>
+    <p class="sub">为了克服静态知识的局限，RAG 应运而生——生成答案之前，先去外部知识库把相关资料找出来</p>
+    <div class="flow" style="margin-top: 4vh;">
+      <div class="node"><b>检索</b><span>RETRIEVE</span></div>
+      <div class="edge"><span class="cond">从外部知识库</span><span class="line"></span></div>
+      <div class="node hub"><b>增强</b><span>AUGMENT</span></div>
+      <div class="edge"><span class="cond">作为上下文</span><span class="line"></span></div>
+      <div class="node"><b>生成</b><span>GENERATE</span></div>
+    </div>
+    <div class="compare">
+      <div class="card before">
+        <span class="tag">BEFORE · 闭卷答题</span>
+        <h3>凭训练权重答</h3>
+        <p>LLM 只靠训练时学到的知识——答得自信，但时效不准、深度不够、容易幻觉，且没有出处。</p>
+        <div class="mech">比喻 · 一个没带资料就上场的学生</div>
+      </div>
+      <div class="arrow"></div>
+      <div class="card">
+        <span class="tag">AFTER · 开卷作答</span>
+        <h3>检索 + 增强 + 生成</h3>
+        <p>先去外部知识库查最新资料，再把资料融进 Prompt，最后驱动 LLM 作答——兼具准确性与透明度。</p>
+        <div class="mech">比喻 · 翻书查目录 → 摊资料上桌 → 参考答案动笔</div>
+      </div>
+    </div>
+    <span class="pagenum">07</span>
+  </section>
+
+  <!-- 08 整体架构（图8.2） -->
+  <section class="slide" data-screen-label="08 整体架构">
+    <span class="kicker">图 8.1 · 8.1.3 · 系统架构</span>
+    <h2>HelloAgents 的双轨设计</h2>
+    <p class="sub">借鉴人类记忆层次 + 兼顾工程实现——记忆与 RAG 设计为两个独立工具</p>
+    <div class="twotrack">
+      <div class="lane">
+        <span class="lbl">TOOL 1 · MEMORY</span>
+        <h3>memory_tool</h3>
+        <p>存储和维护对话过程中的交互信息——智能体自己的经历。</p>
+        <div class="role">职责 · 对话历史 · 用户偏好 · 长期指令 · 跨会话一致性</div>
+      </div>
+      <div class="lane">
+        <span class="lbl">TOOL 2 · KNOWLEDGE</span>
+        <h3>rag_tool</h3>
+        <p>从用户提供的知识库中检索相关信息作为上下文，并可将重要检索结果自动存储到记忆系统。</p>
+        <div class="role">职责 · 外部文档检索 · 专业知识问答 · 答案引用与可解释</div>
+      </div>
+    </div>
+    <span class="pagenum">08</span>
+  </section>
+
+  <!-- 09 记忆系统 + RAG 系统 架构详解（合并） -->
+  <section class="slide" data-screen-label="09 架构详解">
+    <span class="kicker">8.1.3 · 架构详解</span>
+    <h2>记忆系统与 RAG 系统的代码结构</h2>
+    <p class="sub">两套系统都采用分层架构，从基础设施到上层工具逐级可插拔</p>
+    <div class="pair" style="margin-top:3vh;">
+      <div class="col" style="background:var(--ink); color:var(--paper);">
+        <span class="tag" style="color:var(--amber)">MEMORY · 四层架构</span>
+        <h3 style="color:var(--paper); font-family:var(--mono); font-size:clamp(14px,1.15vw,20px); line-height:1.7; font-weight:400; margin: 1.4vh 0;">
+HelloAgents 记忆系统<br>
+├── 基础设施层  MemoryManager · MemoryItem · MemoryConfig · BaseMemory<br>
+├── 记忆类型层  WorkingMemory · EpisodicMemory · SemanticMemory · PerceptualMemory<br>
+├── 存储后端层  QdrantVectorStore · Neo4jGraphStore · SQLiteDocumentStore<br>
+└── 嵌入服务层  DashScope · LocalTransformer · TFIDF
+        </h3>
+        <div class="mech" style="color:var(--amber)">工程模式 · 同模块同接口，存储可替换</div>
+      </div>
+      <div class="col" style="background:var(--ink); color:var(--paper);">
+        <span class="tag" style="color:var(--amber)">RAG · 端到端管道</span>
+        <h3 style="color:var(--paper); font-family:var(--mono); font-size:clamp(14px,1.15vw,20px); line-height:1.7; font-weight:400; margin: 1.4vh 0;">
+HelloAgents RAG 系统<br>
+├── 文档处理层  DocumentProcessor · Document · Pipeline<br>
+├── 嵌入表示层  复用记忆系统的 EmbeddingService<br>
+├── 向量存储层  QdrantVectorStore（命名空间隔离）<br>
+└── 智能问答层  多策略检索 · 上下文构建 · LLM 增强生成
+        </h3>
+        <div class="mech" style="color:var(--amber)">设计要点 · 嵌入服务统一，避免重复实现</div>
+      </div>
+    </div>
+    <span class="pagenum">09</span>
+  </section>
+
+  <!-- 10 项目结构与学习路径 -->
+  <section class="slide" data-screen-label="10 项目结构与学习路径">
+    <span class="kicker">8.1.4 · 本章学习目标</span>
+    <h2>项目代码结构 + 学习路径</h2>
+    <p class="sub">遵循第七章"工具化"原则，记忆与 RAG 都封装为标准 Tool，不创建新的 Agent 类</p>
+    <div class="code-block" style="font-size:clamp(13px,1.1vw,20px);"><span class="cm">hello-agents/</span>
+└── hello_agents/
+    ├── memory/                      <span class="cm"># 记忆系统模块</span>
+    │   ├── manager.py · embedding.py · base.py
+    │   ├── types/    working.py · episodic.py · semantic.py · perceptual.py
+    │   ├── storage/  qdrant_store.py · neo4j_store.py · document_store.py
+    │   └── rag/      pipeline.py · document.py
+    └── tools/builtin/
+        ├── <span class="hl">memory_tool.py</span>    <span class="cm"># Agent 记忆能力</span>
+        └── <span class="hl">rag_tool.py</span>       <span class="cm"># 智能问答能力</span></div>
+    <div class="expand-bar">
+      <span class="lbl">两条学习路径：① 体验式——pip 安装直接跑示例  ② 深度式——从零实现每个组件并跑测试</span>
+      <span class="code-btn" style="border-color:var(--ink-2);color:var(--ink-2);cursor:default">建议 · 先体验后实现</span>
+    </div>
+    <span class="pagenum">10</span>
+  </section>
+
+  <!-- 11 30秒快速体验（重点方法） -->
+  <section class="slide" data-screen-label="11 30秒快速体验">
+    <span class="kicker">8.1.4 · 30 秒上手</span>
+    <h2>快速体验：让 Agent 拥有记忆与知识</h2>
+    <p class="sub">pip 安装 → 配置 .env → 注册两个 Tool 到 SimpleAgent——三步上线</p>
+    <div class="code-block" style="font-size:clamp(13px,1.1vw,20px);"><span class="cm"># 配置好同级文件夹下 .env 中的大模型 API</span>
+from hello_agents import SimpleAgent, HelloAgentsLLM, ToolRegistry
+from hello_agents.tools import <span class="hl">MemoryTool</span>, <span class="hl">RAGTool</span>
+
+llm = HelloAgentsLLM()
+agent = SimpleAgent(name=<span class="hl">"智能助手"</span>, llm=llm, system_prompt=<span class="hl">"..."</span>)
+
+tool_registry = ToolRegistry()
+tool_registry.register_tool(<span class="hl">MemoryTool</span>(user_id=<span class="hl">"user123"</span>))
+tool_registry.register_tool(<span class="hl">RAGTool</span>(knowledge_base_path=<span class="hl">"./knowledge_base"</span>))
+agent.tool_registry = tool_registry
+
+<span class="cm"># 开始对话——从此 Agent 既能"记住"也能"查资料"</span>
+response = agent.run(<span class="hl">"你好！请记住我叫张三，我是一名 Python 开发者"</span>)</div>
+    <div class="notes">
+      <div class="note"><b>pip install</b><p>pip install "hello-agents[all]==0.2.0" + spacy 中英文模型</p></div>
+      <div class="note"><b>.env 三件套</b><p>QDRANT_URL/API_KEY + NEO4J_URI/PASSWORD + EMBED_MODEL_TYPE=dashscope</p></div>
+      <div class="note"><b>两个核心方法</b><p>memory_tool.execute("add"/"search") · rag_tool.execute("add_text"/"search")</p></div>
+    </div>
+    <button class="code-btn" data-modal="m-quickstart">查看完整代码 ↗</button>
+    <span class="pagenum">11</span>
+  </section>
+
+  <!-- 12 收尾 -->
+  <section class="slide s-closing" data-screen-label="12 Closing">
+    <span class="kicker">CLOSING</span>
+    <blockquote>从认知科学出发，<br>到 HelloAgents 的记忆 + RAG 双轨设计——<br>让 Agent 真正拥有记忆与持续学习能力。</blockquote>
+    <span class="pagenum">12</span>
+  </section>
+
+</div>
+
+<!-- 翻页控件 -->
+<div id="nav">
+  <span id="counter">1 / 12</span>
+  <button id="prev" aria-label="上一页"><span class="arrow prev"></span></button>
+  <button id="next" aria-label="下一页"><span class="arrow next"></span></button>
+</div>
+
+<!-- ================= 代码弹窗 ================= -->
+<div class="modal" id="m-stateless">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">无状态：对话遗忘示例<span>8.1.2 完整代码</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code"># 第七章的Agent使用方式
+from hello_agents import SimpleAgent, HelloAgentsLLM
+
+agent = SimpleAgent(name="学习助手", llm=HelloAgentsLLM())
+
+# 第一次对话
+response1 = agent.run("我叫张三，正在学习Python，目前掌握了基础语法")
+print(response1)  # "很好！Python基础语法是编程的重要基础..."
+
+# 第二次对话（新的会话）
+response2 = agent.run("你还记得我的学习进度吗？")
+print(response2)  # "抱歉，我不知道您的学习进度..."
+
+# ============ 问题剖析 ============
+# 1. 上下文丢失：早期信息可能被上下文窗口截断
+# 2. 个性化缺失：Agent 无法记住用户习惯或偏好
+# 4. 一致性问题：多轮对话可能出现前后矛盾
+
+# ============ 解决方案 ============
+# 引入记忆系统（MemoryTool），让 Agent 拥有跨会话的"记性"</div>
+  </div>
+</div>
+
+<div class="modal" id="m-quickstart">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">30 秒上手记忆 + RAG<span>8.1.4 完整代码 + .env 配置</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code"># ============ 0. 安装 ============
+# 0.2.0 版本若遇模型不可用，可查看 issue #320 或切换 0.2.9 版本
+pip install "hello-agents[all]==0.2.0"
+python -m spacy download zh_core_web_sm
+python -m spacy download en_core_web_sm
+
+# ============ 1. .env 配置 ============
+# Qdrant 向量数据库（推荐云服务）
+QDRANT_URL=https://your-cluster.qdrant.tech:6333
+QDRANT_API_KEY=your_qdrant_api_key_here
+QDRANT_COLLECTION=hello_agents_vectors
+QDRANT_VECTOR_SIZE=384
+QDRANT_DISTANCE=cosine
+
+# Neo4j 图数据库
+NEO4J_URI=neo4j+s://your-instance.databases.neo4j.io
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your_neo4j_password_here
+
+# 嵌入模型（默认 dashscope；可切 local / tfidf）
+EMBED_MODEL_TYPE=dashscope
+EMBED_MODEL_NAME=
+EMBED_API_KEY=
+
+# ============ 2. 创建具有记忆 + RAG 能力的 Agent ============
+from hello_agents import SimpleAgent, HelloAgentsLLM, ToolRegistry
+from hello_agents.tools import MemoryTool, RAGTool
+
+llm = HelloAgentsLLM()
+agent = SimpleAgent(
+    name="智能助手",
+    llm=llm,
+    system_prompt="你是一个有记忆和知识检索能力的AI助手"
+)
+
+tool_registry = ToolRegistry()
+tool_registry.register_tool(MemoryTool(user_id="user123"))
+tool_registry.register_tool(RAGTool(knowledge_base_path="./knowledge_base"))
+agent.tool_registry = tool_registry
+
+# 开始对话
+response = agent.run("你好！请记住我叫张三，我是一名Python开发者")
+print(response)
+
+# ============ 3. 常用方法 ============
+# memory_tool.execute("add", content="...", memory_type="semantic", importance=0.8)
+# memory_tool.execute("search", query="...", limit=5)
+# rag_tool.execute("add_text", text="...", document_id="doc_001")
+# rag_tool.execute("search", query="...", limit=3)</div>
+  </div>
+</div>
+
+<script>
+/* ============== 翻页引擎 ============== */
+(function(){
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('counter');
+  const prevBtn = document.getElementById('prev');
+  const nextBtn = document.getElementById('next');
+  const total = slides.length;
+  let current = 0;
+
+  function show(i){
+    if(i < 0 || i >= total) return;
+    slides[current].classList.remove('active');
+    current = i;
+    slides[current].classList.add('active');
+    counter.textContent = (current+1) + ' / ' + total;
+    history.replaceState(null, '', '#p' + (current+1));
+    try { localStorage.setItem('81-slide', String(current)); } catch(e){}
+  }
+
+  function hashToIndex(){
+      const m = location.hash.match(/^#p(\d+)$/);
+      if(m){ const n = parseInt(m[1],10); if(n>=1 && n<=total){ return n-1; } }
+      try { const s = localStorage.getItem('81-slide'); if(s!==null){ const n=parseInt(s,10); if(n>=0 && n<total) return n; } } catch(e){}
+      return 0;
+  }
+
+  prevBtn.addEventListener('click', ()=> show(current-1));
+  nextBtn.addEventListener('click', ()=> show(current+1));
+  document.addEventListener('keydown', (e)=>{
+    // 弹窗打开时屏蔽翻页键
+    if(document.querySelector('.modal.open')){
+      if(e.key === 'Escape'){ closeAllModals(); e.preventDefault(); }
+      return;
+    }
+    if(e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' '){ show(current+1); e.preventDefault(); }
+    else if(e.key === 'ArrowLeft' || e.key === 'PageUp'){ show(current-1); e.preventDefault(); }
+    else if(e.key === 'Home'){ show(0); e.preventDefault(); }
+    else if(e.key === 'End'){ show(total-1); e.preventDefault(); }
+  });
+
+  show(hashToIndex());
+
+  /* ============== 弹窗：打开 / 关闭 ============== */
+  function openModal(id){
+    const m = document.getElementById(id);
+    if(m) m.classList.add('open');
+  }
+  function closeAllModals(){
+    document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open'));
+  }
+  document.querySelectorAll('.code-btn[data-modal]').forEach(btn => {
+    btn.addEventListener('click', ()=> openModal(btn.dataset.modal));
+  });
+  document.querySelectorAll('.modal').forEach(m => {
+    const closeBtn = m.querySelector('.modal-close');
+    if(closeBtn) closeBtn.addEventListener('click', closeAllModals);
+    m.addEventListener('click', (e)=>{ if(e.target === m) closeAllModals(); });
+  });
+
+  /* ============== Python 语法高亮（单次扫描分词器） ============== */
+  const KEYWORDS = new Set(['def','class','return','if','elif','else','for','while','in','is','not','and','or','import','from','as','try','except','finally','with','lambda','yield','pass','break','continue','True','False','None','self','raise','global','nonlocal','async','await']);
+  const BUILTINS = new Set(['print','len','range','list','dict','set','tuple','str','int','float','bool','open','isinstance','enumerate','zip','map','filter','sum','min','max','abs','round','sorted']);
+
+  function tokenize(src){
+    var out = []; var i=0; var n=src.length;
+    while(i<n){
+      var c = src[i];
+      // 注释
+      if(c === '#'){ var j=i; while(j<n && src[j] !== '\n') j++; out.push({t:'cm', v:src.slice(i,j)}); i=j; continue; }
+      // 字符串（单/双/三引号，含 f/r 前缀）
+      if(c === '"' || c === "'" || c === 'f' || c === 'r' || c === 'b'){
+        var pre = '';
+        if((c==='f'||c==='r'||c==='b') && i+1<n && (src[i+1]==='"'||src[i+1]==="'")){ pre=c; i++; c=src[i]; }
+        if(c === '"' || c === "'"){
+          var quote = c; var triple = (i+2<n && src[i+1]===quote && src[i+2]===quote);
+          if(triple){ var end=src.indexOf(quote+quote+quote, i+3); var stop=(end<0?n:end+3); out.push({t:'str',v:src.slice(i,stop)}); i=stop; }
+          else { var j=i+1; while(j<n && src[j]!==quote){ if(src[j]==='\\' && j+1<n) j+=2; else j++; } var stop=Math.min(n, j+1); out.push({t:'str',v:src.slice(i,stop)}); i=stop; }
+          continue;
+        }
+      }
+      // 数字
+      if(/[0-9]/.test(c)){
+        var j=i; while(j<n && /[0-9._eE+\-]/.test(src[j])){ if((src[j]==='+'||src[j]==='-') && !(j>i && /[eE]/.test(src[j-1]))) break; j++; }
+        out.push({t:'num', v:src.slice(i,j)}); i=j; continue;
+      }
+      // 标识符 / 关键字
+      if(/[A-Za-z_]/.test(c)){
+        var j=i; while(j<n && /[A-Za-z0-9_]/.test(src[j])) j++;
+        var w = src.slice(i,j);
+        if(KEYWORDS.has(w)) out.push({t:'kw', v:w});
+        else if(BUILTINS.has(w)) out.push({t:'kw', v:w});
+        else out.push({t:'id', v:w});
+        i=j; continue;
+      }
+      // 其他
+      out.push({t:'id', v:c}); i++;
+    }
+    return out;
+  }
+
+  function highlightInto(pre){
+    var src = pre.textContent;
+    var toks = tokenize(src);
+    var html = '';
+    for(var k=0;k<toks.length;k++){
+      var t = toks[k];
+      var v = t.v
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;');
+      if(t.t === 'cm') html += '<span class="tk-cm">'+v+'</span>';
+      else if(t.t === 'str') html += '<span class="tk-str">'+v+'</span>';
+      else if(t.t === 'kw') html += '<span class="tk-kw">'+v+'</span>';
+      else if(t.t === 'num') html += '<span class="tk-num">'+v+'</span>';
+      else html += v;
+    }
+    pre.innerHTML = html;
+  }
+
+  document.querySelectorAll('.modal-code').forEach(highlightInto);
+})();
+</script>
+
+</body>
+</html>

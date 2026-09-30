@@ -1,0 +1,1473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记忆系统：让智能体拥有记忆 · HelloAgents 8.2（v2）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@400;500&family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:ital,opsz,wght@1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:      #F1ECDE;
+    --paper-deep: #E6DCC4;
+    --ink:        #1A1A18;
+    --ink-2:      #736D5A;
+    --teal:       #1B4B5A;
+    --hairline:   #C8BEA4;
+    --amber:      #E8C468;
+    --serif: "Noto Serif SC", "Source Serif 4", serif;
+    --sans:  "Noto Sans SC", sans-serif;
+    --mono:  "JetBrains Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 幻灯片引擎：铺满整个视口 ---------- */
+  #stage { position: fixed; inset: 0; }
+
+  .slide {
+    position: absolute; inset: 0;
+    padding: clamp(48px, 7vh, 88px) clamp(40px, 6vw, 120px);
+    display: none;
+    flex-direction: column;
+    text-wrap: pretty;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; animation: fade 0.7s ease; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .slide.active { animation: none; } }
+
+  /* ---------- 通用元素 ---------- */
+  .kicker {
+    font-family: var(--sans);
+    font-size: clamp(13px, 1.1vw, 20px); font-weight: 500;
+    letter-spacing: 0.14em;
+    color: var(--teal);
+  }
+  .slide h2 { font-size: clamp(34px, 3.4vw, 64px); font-weight: 700; margin: 1.2vh 0 0.8vh; }
+  .slide .sub { font-size: clamp(18px, 1.6vw, 30px); color: var(--ink-2); max-width: 80%; }
+  .pagenum {
+    position: absolute; bottom: clamp(24px, 4vh, 48px); left: clamp(40px, 6vw, 120px);
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 18px); color: var(--ink-2);
+  }
+
+  /* ---------- 封面 ---------- */
+  .s-title { justify-content: center; }
+  .s-title h1 { font-size: clamp(56px, 6.8vw, 128px); font-weight: 900; line-height: 1.2; margin: 3vh 0 4vh; }
+  .s-title .dek { font-size: clamp(19px, 1.7vw, 32px); color: var(--ink-2); }
+  .s-title .dek em { font-family: "Source Serif 4", var(--serif); font-style: italic; color: var(--teal); }
+  .s-title .speaker {
+    margin-top: 7vh;
+    font-family: var(--sans); font-size: clamp(15px, 1.25vw, 23px);
+    letter-spacing: 0.12em;
+    display: inline-block; align-self: flex-start;
+    background: var(--amber); color: var(--ink);
+    padding: 0.35em 0.8em;
+  }
+
+  /* ---------- 五阶段卡片 ---------- */
+  .stages { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 6vh; }
+  .stage { padding: 0 clamp(14px, 1.5vw, 28px); border-left: 1px solid var(--hairline); }
+  .stage:first-child { border-left: none; padding-left: 0; }
+  .stage .n { font-family: var(--mono); font-size: clamp(12px, 1vw, 18px); color: var(--teal); display: block; margin-bottom: 2vh; }
+  .stage h3 { font-size: clamp(24px, 2.1vw, 40px); font-weight: 700; margin-bottom: 1vh; }
+  .stage p { font-size: clamp(15px, 1.2vw, 23px); color: var(--ink-2); line-height: 1.6; }
+
+  .stages.tall {
+    flex: 1; min-height: 0;
+    margin-top: 4vh; margin-bottom: 6vh;
+    gap: clamp(12px, 1.2vw, 24px);
+  }
+  .stages.tall .stage {
+    display: flex; flex-direction: column;
+    background: var(--paper-deep);
+    border-left: none;
+    padding: clamp(24px, 3.5vh, 48px) clamp(16px, 1.5vw, 28px);
+  }
+  .stages.tall .stage:first-child { padding-left: clamp(16px, 1.5vw, 28px); }
+  .stages.tall .stage .n { margin-bottom: auto; }
+  .stages.tall .stage h3 { font-size: clamp(32px, 2.8vw, 52px); margin-top: auto; margin-bottom: 1.6vh; }
+  .stages.tall .stage p { margin-bottom: auto; }
+  .stages.tall .stage .map {
+    margin-top: auto; padding-top: 1.6vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 四宫格 ---------- */
+  .memory-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--hairline); border: 1px solid var(--hairline);
+    margin-top: 4vh; flex: 1; min-height: 0;
+  }
+  .memory-cell { background: var(--paper); padding: clamp(20px, 4vh, 44px) clamp(24px, 2.5vw, 48px); display: flex; flex-direction: column; }
+  .memory-cell .tag { font-family: var(--mono); font-size: clamp(13px, 1.1vw, 19px); color: var(--teal); display: block; margin-bottom: auto; }
+  .memory-cell h3 { font-size: clamp(24px, 2vw, 38px); font-weight: 700; margin-bottom: 1.2vh; }
+  .memory-cell p { font-size: clamp(16px, 1.3vw, 24px); color: var(--ink-2); line-height: 1.65; margin-bottom: auto; }
+  .memory-cell .meta {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal);
+  }
+
+  /* ---------- 记忆类型详情页 ---------- */
+  .detail-head { display: flex; align-items: baseline; gap: 40px; }
+  .detail-head .en { font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal); }
+  .detail-cols {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    flex: 1; min-height: 0; margin-top: 3vh;
+  }
+  .detail-cols .col {
+    padding: 0 clamp(18px, 2vw, 40px);
+    border-left: 1px solid var(--hairline);
+    display: flex; flex-direction: column;
+  }
+  .detail-cols .col:first-child { border-left: none; padding-left: 0; }
+  .detail-cols .lbl {
+    font-family: var(--sans); font-size: clamp(13px, 1.05vw, 20px);
+    color: var(--ink-2); letter-spacing: 0.08em; margin-bottom: auto;
+  }
+  .detail-cols .col > p { font-size: clamp(18px, 1.55vw, 28px); line-height: 1.65; margin-bottom: auto; }
+  .detail-cols .mech {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 图 8.3 组件化流程图 ---------- */
+  .cogmap {
+    flex: 1; min-height: 0; margin-top: 2vh; margin-bottom: 2vh;
+    display: flex; align-items: stretch; gap: clamp(10px, 1.2vw, 24px);
+  }
+  .cog-group {
+    border: 1px solid var(--hairline); background: var(--paper-deep);
+    padding: clamp(20px, 3vh, 40px) clamp(16px, 1.5vw, 32px);
+    display: flex; flex-direction: column; justify-content: center; gap: 2.5vh;
+    flex: 1;
+  }
+  .cog-group .cog-label {
+    font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px);
+    color: var(--teal); letter-spacing: 0.1em; text-align: center;
+  }
+  .cog-node {
+    border: 1px solid var(--ink); background: var(--paper);
+    padding: 1.8vh clamp(12px, 1.2vw, 24px); text-align: center;
+  }
+  .cog-node b { display: block; font-size: clamp(18px, 1.7vw, 32px); font-weight: 700; white-space: nowrap; }
+  .cog-node span { font-family: var(--mono); font-size: clamp(10px, 0.9vw, 15px); color: var(--ink-2); letter-spacing: 0.05em; }
+  .cog-node.hub { border-width: 2px; }
+  .cog-row { display: flex; align-items: center; gap: clamp(8px, 1vw, 20px); }
+  .cog-row .cog-node { flex: 1; }
+  .cog-edge { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+  .cog-edge .cond { font-family: var(--mono); font-size: clamp(10px, 0.9vw, 15px); color: var(--teal); white-space: nowrap; }
+  .cog-edge .line { width: clamp(32px, 3.5vw, 72px); height: 1px; background: var(--ink); position: relative; }
+  .cog-edge .line::after {
+    content: ""; position: absolute; right: 0; top: -4.5px;
+    border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+    border-left: 8px solid var(--ink);
+  }
+  .cog-link { align-self: center; flex-shrink: 0; }
+  .cog-link .line { width: clamp(24px, 2.5vw, 48px); height: 1px; background: var(--ink); position: relative; }
+  .cog-link .line::after {
+    content: ""; position: absolute; right: 0; top: -5.5px;
+    border-top: 6px solid transparent; border-bottom: 6px solid transparent;
+    border-left: 10px solid var(--ink);
+  }
+  .cog-core { display: grid; grid-template-columns: auto 1fr; gap: 2vh clamp(10px, 1.2vw, 24px); align-items: center; }
+  .cog-core .hub-wrap { grid-row: 1 / 4; display: flex; align-items: center; }
+  .cog-branch { display: flex; align-items: center; gap: clamp(8px, 1vw, 20px); }
+  .cog-branch .cog-node { flex: 1; }
+
+  /* ---------- 图 8.4 组件化工作流程 ---------- */
+  .wf { flex: 1; min-height: 0; margin-top: 1vh; display: flex; flex-direction: column; gap: 1.2vh; }
+  .wf-top { display: flex; flex-direction: column; align-items: center; gap: 1vh; }
+  .wf-top .wf-node { min-width: clamp(200px, 18vw, 340px); }
+  .wf-lanes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: clamp(10px, 1.2vw, 24px); }
+  .wf-lane {
+    border: 1px solid var(--hairline); background: var(--paper-deep);
+    padding: 1.6vh clamp(10px, 1vw, 20px);
+    display: flex; flex-direction: column; gap: 1vh;
+  }
+  .wf-lane .cog-label { font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px); color: var(--teal); letter-spacing: 0.1em; text-align: center; }
+  .wf-node {
+    border: 1px solid var(--ink); background: var(--paper);
+    padding: 1vh clamp(8px, 0.8vw, 16px); text-align: center;
+  }
+  .wf-node b { display: block; font-size: clamp(14px, 1.2vw, 22px); font-weight: 700; white-space: nowrap; }
+  .wf-node span { font-family: var(--mono); font-size: clamp(10px, 0.8vw, 14px); color: var(--ink-2); }
+  .wf-node.code b { font-family: var(--mono); font-weight: 600; }
+  .wf-node.hub { border-width: 2px; }
+  .wf-down { width: 1px; height: 1.6vh; background: var(--ink); margin: 0 auto; position: relative; flex-shrink: 0; }
+  .wf-down::after {
+    content: ""; position: absolute; bottom: 0; left: -4px;
+    border-left: 4.5px solid transparent; border-right: 4.5px solid transparent;
+    border-top: 7px solid var(--ink);
+  }
+  .wf-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .wf-chip { border: 1px solid var(--ink); background: var(--paper); padding: 0.8vh 6px; text-align: center; }
+  .wf-chip b { display: block; font-size: clamp(13px, 1.1vw, 20px); font-weight: 700; }
+  .wf-chip span { font-family: var(--mono); font-size: clamp(9px, 0.75vw, 13px); color: var(--teal); }
+  .wf-embed { border: 1px solid var(--ink); background: var(--paper); padding: 0.8vh 10px; text-align: center; }
+  .wf-embed b { display: block; font-size: clamp(13px, 1.1vw, 20px); font-weight: 700; }
+  .wf-embed span { font-family: var(--mono); font-size: clamp(9px, 0.75vw, 13px); color: var(--teal); }
+  .wf-lane .stack { display: flex; flex-direction: column; gap: 8px; }
+
+  /* ---------- 代码块 ---------- */
+  .code-block {
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); line-height: 1.75;
+    padding: clamp(24px, 3.5vh, 44px) clamp(28px, 3vw, 56px); margin-top: 3vh;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+    overflow: hidden; white-space: pre;
+  }
+  .code-block .cm { color: var(--hairline); }
+  .code-block .hl { color: var(--amber); }
+
+  /* ---------- 完整代码按钮 / 展开条 ---------- */
+  .code-btn {
+    align-self: flex-start;
+    margin-top: 2.5vh;
+    font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px);
+    color: var(--ink); background: transparent;
+    border: 1px solid var(--ink); padding: 1.2vh 1.6vw;
+    cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .code-btn:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .expand-bar {
+    background: var(--paper-deep);
+    margin-top: 3vh; padding: 1.8vh clamp(20px, 2vw, 40px);
+    display: flex; align-items: center; gap: 2vw;
+  }
+  .expand-bar .lbl {
+    font-family: var(--sans); font-size: clamp(13px, 1vw, 18px);
+    color: var(--ink-2); letter-spacing: 0.06em;
+  }
+  .expand-bar .code-btn { margin-top: 0; margin-left: auto; }
+
+  /* ---------- 代码弹窗 ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(26, 26, 24, 0.55);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal.open { display: flex; }
+  .modal-panel {
+    background: var(--paper);
+    width: min(1240px, 88vw); max-height: 86vh;
+    border: 1px solid var(--ink);
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.3);
+    display: flex; flex-direction: column;
+  }
+  .modal-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 24px;
+    padding: 2vh 2.5vw; border-bottom: 1px solid var(--hairline);
+  }
+  .modal-title { font-size: clamp(17px, 1.4vw, 26px); font-weight: 700; }
+  .modal-title span { font-family: var(--mono); font-size: 0.7em; color: var(--teal); font-weight: 400; margin-left: 12px; }
+  .modal-close {
+    border: 1px solid var(--ink-2); background: transparent; color: var(--ink);
+    width: 44px; height: 44px; font-size: 22px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .modal-close:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .modal-code {
+    flex: 1; overflow: auto;
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: clamp(12px, 0.95vw, 16px); line-height: 1.7;
+    padding: 3vh 2.5vw; white-space: pre;
+  }
+  /* Python 语法高亮（配色从色板派生：amber 关键字 / 浅 teal 字符串 / hairline 注释 / 浅 amber 数字） */
+  .tk-cm { color: var(--hairline); font-style: italic; }
+  .tk-str { color: #7FB3C4; }
+  .tk-kw { color: var(--amber); }
+  .tk-num { color: #F0DCAE; }
+
+  /* ---------- 公式 ---------- */
+  .formula {
+    font-family: var(--mono); font-size: clamp(17px, 1.6vw, 30px); color: var(--teal);
+    border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline);
+    padding: 2.6vh 0; margin-top: 3vh; text-align: center;
+  }
+
+  /* ---------- 整合流向图 ---------- */
+  .flow { display: flex; align-items: center; justify-content: center; gap: clamp(16px, 2vw, 40px); margin-top: 4vh; }
+  .flow .node {
+    border: 1px solid var(--ink); padding: 2.2vh clamp(20px, 2vw, 40px);
+    text-align: center; background: var(--paper);
+  }
+  .flow .node b { display: block; font-size: clamp(20px, 1.8vw, 32px); font-weight: 700; white-space: nowrap; }
+  .flow .node span { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--ink-2); }
+  .flow .edge { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .flow .edge .cond { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); }
+  .flow .edge .line { width: clamp(48px, 5vw, 96px); height: 1px; background: var(--ink); position: relative; }
+  .flow .edge .line::after {
+    content: ""; position: absolute; right: 0; top: -5px;
+    border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent;
+    border-left: 9px solid var(--ink);
+  }
+
+  /* ---------- 分层架构图 ---------- */
+  .arch { flex: 1; min-height: 0; margin-top: 3vh; display: flex; flex-direction: column; justify-content: center; gap: 2vh; }
+  .arch .layer-label { font-family: var(--mono); font-size: clamp(11px, 0.9vw, 15px); color: var(--teal); letter-spacing: 0.08em; margin-bottom: 0.8vh; }
+  .arch .box { border: 1px solid var(--ink); background: var(--paper); padding: 1.6vh 2vw; text-align: center; }
+  .arch .box b { font-size: clamp(17px, 1.5vw, 26px); font-weight: 700; }
+  .arch .box span { font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px); color: var(--ink-2); display: block; margin-top: 4px; }
+  .arch .connector { width: 1px; height: 2.2vh; background: var(--ink); margin: 0 auto; }
+  .arch .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); }
+  .arch .row .box { border: none; }
+  .arch .row .box i { font-family: var(--mono); font-style: normal; font-size: clamp(10px, 0.85vw, 14px); color: var(--teal); display: block; margin-bottom: 4px; }
+
+  /* ---------- 参数注解条（add / search 页） ---------- */
+  .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(12px, 1.2vw, 24px); margin-top: 2vh; }
+  .notes .note { border-top: 1px solid var(--hairline); padding-top: 1.2vh; }
+  .notes .note b { display: block; font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px); color: var(--teal); margin-bottom: 0.6vh; font-weight: 600; }
+  .notes .note p { font-size: clamp(13px, 1.05vw, 19px); color: var(--ink-2); line-height: 1.55; }
+
+  /* ---------- 收尾 ---------- */
+  .s-closing { justify-content: center; text-align: center; align-items: center; }
+  .s-closing blockquote { font-size: clamp(30px, 3vw, 56px); font-weight: 600; line-height: 1.6; margin-top: 4vh; }
+
+  /* ---------- 翻页控件 ---------- */
+  #nav {
+    position: fixed; bottom: 24px; right: 32px; z-index: 10;
+    display: flex; gap: 12px; align-items: center;
+  }
+  #counter {
+    font-family: var(--mono); font-size: 15px; color: var(--ink-2);
+    min-width: 72px; text-align: center;
+  }
+  #nav button {
+    width: 52px; height: 52px;
+    border: 1px solid var(--ink-2); background: transparent;
+    cursor: pointer; transition: background 0.2s, border-color 0.2s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #nav button:hover { background: var(--teal); border-color: var(--teal); }
+  .arrow { width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+  .arrow.prev { border-right: 13px solid var(--ink); }
+  .arrow.next { border-left: 13px solid var(--ink); }
+  #nav button:hover .arrow.prev { border-right-color: var(--paper); }
+  #nav button:hover .arrow.next { border-left-color: var(--paper); }
+
+  /* ---------- 打印 / 导出 PDF（放在样式表末尾，避免被后续规则覆盖） ---------- */
+  @page { size: 406.4mm 228.6mm; margin: 0; }
+  @media print {
+    body { overflow: visible; }
+    #stage { position: static; }
+    .slide {
+      position: relative; inset: auto;
+      display: flex !important; animation: none;
+      width: 100vw; height: 100vh;
+      page-break-after: always; break-after: page;
+      overflow: hidden;
+    }
+    .slide:last-of-type { page-break-after: auto; break-after: auto; }
+    #nav, .modal, .code-btn { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <!-- 01 封面 -->
+  <section class="slide s-title active" data-screen-label="01 Title">
+    <span class="kicker">HELLOAGENTS · 第八章 记忆与检索 · 8.2</span>
+    <h1>记忆系统：<br>让智能体拥有记忆</h1>
+    <p class="dek">模仿人类大脑处理信息的方式 —— <em>编码、存储、检索、整合、遗忘。</em></p>
+    <p class="speaker">主讲人：柠檬酸</p>
+    <span class="pagenum">01</span>
+  </section>
+
+  <!-- 02 认知五阶段 -->
+  <section class="slide" data-screen-label="02 认知五阶段">
+    <span class="kicker">8.2.1 · 认知科学模型</span>
+    <h2>人类记忆如何形成</h2>
+    <p class="sub">记忆系统的每个技术组件，都映射自一个认知阶段</p>
+    <div class="stages tall">
+      <div class="stage"><span class="n">STAGE 1</span><h3>编码</h3><p>感知信息 → 可存储的形式</p><div class="map">add · 自动补充会话 ID、时间戳、模态元数据</div></div>
+      <div class="stage"><span class="n">STAGE 2</span><h3>存储</h3><p>编码后的信息存入记忆系统</p><div class="map">四类记忆模块 · 各自的存储后端</div></div>
+      <div class="stage"><span class="n">STAGE 3</span><h3>检索</h3><p>按需要提取相关记忆</p><div class="map">retrieve · 语义 × 时间 × 重要性混合评分</div></div>
+      <div class="stage"><span class="n">STAGE 4</span><h3>整合</h3><p>短期记忆 → 长期记忆</p><div class="map">consolidate · 重要性 ≥ 0.7 自动升级</div></div>
+      <div class="stage"><span class="n">STAGE 5</span><h3>遗忘</h3><p>删除不重要或过时的信息</p><div class="map">forget · 重要性 / 时间 / 容量三策略</div></div>
+    </div>
+    <span class="pagenum">02</span>
+  </section>
+
+  <!-- 03 图 8.3 -->
+  <section class="slide" data-screen-label="03 图8.3 认知过程">
+    <span class="kicker">图 8.3</span>
+    <h2>记忆形成的认知过程</h2>
+    <div class="cogmap">
+      <div class="cog-group">
+        <span class="cog-label">外部信息处理</span>
+        <div class="cog-row">
+          <div class="cog-node"><b>感知输入</b><span>SENSORY INPUT</span></div>
+          <div class="cog-edge"><span class="line"></span></div>
+          <div class="cog-node"><b>编码</b><span>ENCODING</span></div>
+        </div>
+      </div>
+      <div class="cog-link"><span class="line"></span></div>
+      <div class="cog-group" style="flex: 1.6;">
+        <span class="cog-label">记忆系统核心</span>
+        <div class="cog-core">
+          <div class="hub-wrap"><div class="cog-node hub"><b>存储</b><span>STORAGE</span></div></div>
+          <div class="cog-branch">
+            <div class="cog-edge"><span class="cond">信息巩固与强化</span><span class="line"></span></div>
+            <div class="cog-node"><b>整合</b><span>CONSOLIDATION</span></div>
+          </div>
+          <div class="cog-branch">
+            <div class="cog-edge"><span class="cond">信息丢失</span><span class="line"></span></div>
+            <div class="cog-node"><b>遗忘</b><span>FORGETTING</span></div>
+          </div>
+          <div class="cog-branch">
+            <div class="cog-edge"><span class="cond">信息提取</span><span class="line"></span></div>
+            <div class="cog-node"><b>检索</b><span>RETRIEVAL</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="cog-link"><span class="line"></span></div>
+      <div class="cog-group">
+        <span class="cog-label">输出</span>
+        <div class="cog-node"><b>回忆与行为输出</b><span>RECALL &amp; BEHAVIOR</span></div>
+      </div>
+    </div>
+    <span class="pagenum">03</span>
+  </section>
+
+  <!-- 04 四种记忆总览 -->
+  <section class="slide" data-screen-label="04 四种记忆总览">
+    <span class="kicker">8.2.1 · 系统设计</span>
+    <h2>四种记忆类型</h2>
+    <div class="memory-grid">
+      <div class="memory-cell">
+        <span class="tag">WORKING</span><h3>工作记忆</h3>
+        <p>当前对话的短期记忆，容量受限（默认 50 条），随会话结束清理</p>
+        <div class="meta">纯内存 + TTL</div>
+      </div>
+      <div class="memory-cell">
+        <span class="tag">EPISODIC</span><h3>情景记忆</h3>
+        <p>具体交互事件的长期存储，支持按时间回顾，是"复盘"的基础</p>
+        <div class="meta">SQLite + Qdrant</div>
+      </div>
+      <div class="memory-cell">
+        <span class="tag">SEMANTIC</span><h3>语义记忆</h3>
+        <p>抽象知识、概念与规则——用户偏好、长期指令、领域知识</p>
+        <div class="meta">Neo4j + Qdrant</div>
+      </div>
+      <div class="memory-cell">
+        <span class="tag">PERCEPTUAL</span><h3>感知记忆</h3>
+        <p>图像、音频等多模态信息，支持跨模态检索</p>
+        <div class="meta">模态分离的向量集合</div>
+      </div>
+    </div>
+    <span class="pagenum">04</span>
+  </section>
+
+  <!-- 05 图 8.4 -->
+  <section class="slide" data-screen-label="05 图8.4 完整工作流程">
+    <span class="kicker">图 8.4</span>
+    <h2>记忆系统的完整工作流程</h2>
+    <div class="wf">
+      <div class="wf-top">
+        <div class="wf-node"><b>用户输入</b></div>
+        <div class="wf-down"></div>
+        <div class="wf-node hub"><b>操作类型判断</b></div>
+      </div>
+      <div class="wf-lanes">
+        <div class="wf-lane">
+          <span class="cog-label">添加记忆</span>
+          <div class="wf-node code"><b>Manager.add_memory</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>自动分类</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-chips">
+            <div class="wf-chip"><b>工作记忆</b><span>内存 + TTL</span></div>
+            <div class="wf-chip"><b>情景记忆</b><span>SQLite + Qdrant</span></div>
+            <div class="wf-chip"><b>语义记忆</b><span>Qdrant + Neo4j</span></div>
+            <div class="wf-chip"><b>感知记忆</b><span>多模态向量</span></div>
+          </div>
+          <div class="wf-down"></div>
+          <div class="wf-embed"><b>统一嵌入服务 EmbeddingService</b><span>DashScope → Local → TF-IDF</span></div>
+        </div>
+        <div class="wf-lane">
+          <span class="cog-label">搜索记忆</span>
+          <div class="wf-node code"><b>Manager.retrieve_memories</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>跨类型并行检索</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node code"><b>各记忆类型 .retrieve</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>结果聚合与排序</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>返回 Top-K 记忆</b></div>
+        </div>
+        <div class="wf-lane">
+          <span class="cog-label">管理操作</span>
+          <div class="wf-node code"><b>Manager.管理功能</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>管理策略</b></div>
+          <div class="wf-down"></div>
+          <div class="stack">
+            <div class="wf-chip"><b>记忆整合</b><span>Working → Episodic</span></div>
+            <div class="wf-chip"><b>智能遗忘</b><span>多策略清理</span></div>
+            <div class="wf-chip"><b>统计分析</b><span>跨类型汇总</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <span class="pagenum">05</span>
+  </section>
+
+  <!-- 06 快速体验（8.2.2） -->
+  <section class="slide" data-screen-label="06 快速体验">
+    <span class="kicker">8.2.2 · 30 秒上手</span>
+    <h2>快速体验记忆功能</h2>
+    <p class="sub">先跑起来，再深入原理</p>
+    <div class="code-block"><span class="cm"># 创建具有记忆能力的 Agent</span>
+llm = HelloAgentsLLM()
+agent = SimpleAgent(name="记忆助手", llm=llm)
+memory_tool = <span class="hl">MemoryTool</span>(user_id="user123")   <span class="cm"># 创建记忆工具</span>
+
+<span class="cm"># 添加一条语义记忆（importance 标记重要程度，0.0–1.0）</span>
+memory_tool.execute(<span class="hl">"add"</span>,
+    content="用户张三是一名Python开发者，专注于机器学习",
+    memory_type="semantic", importance=<span class="hl">0.8</span>)
+
+memory_tool.execute(<span class="hl">"search"</span>, query="前端工程师", limit=3)</div>
+    <button class="code-btn" data-modal="m-quick">查看完整代码 ↗</button>
+    <span class="pagenum">06</span>
+  </section>
+
+  <!-- 07 MemoryTool 统一接口（8.2.3） -->
+  <section class="slide" data-screen-label="07 MemoryTool 统一接口">
+    <span class="kicker">8.2.3 · 架构模式</span>
+    <h2>MemoryTool：统一入口，分发处理</h2>
+    <p class="sub">自顶向下：先看统一接口，再逐个深入关键操作</p>
+    <div class="code-block"><span class="cm"># 一个 execute 分发九种操作</span>
+<span class="hl">def execute(self, action: str, **kwargs) -> str:</span>
+    <span class="cm"># add / search / summary / stats / update</span>
+    <span class="cm"># remove / forget / consolidate / clear_all</span>
+
+    if action == "add":    return self._add_memory(**kwargs)
+    if action == "search": return self._search_memory(**kwargs)
+    <span class="cm"># … 其余操作同理分发</span></div>
+    <button class="code-btn" data-modal="m-execute">查看完整代码 ↗</button>
+    <span class="pagenum">07</span>
+  </section>
+
+  <!-- 08 add 操作详解 -->
+  <section class="slide" data-screen-label="08 add 操作">
+    <span class="kicker">8.2.3 · 操作 1/4 · 编码</span>
+    <h2>add：模拟信息编码</h2>
+    <p class="sub">不只是存储内容，更为每条记忆附上丰富的上下文</p>
+    <div class="code-block" style="font-size: clamp(12px, 1.05vw, 19px);"><span class="hl">def _add_memory(self, content="", memory_type="working",
+                importance=0.5, file_path=None, **metadata)</span>
+    <span class="cm"># ① 会话 ID 自动管理：每条记忆都有明确的会话归属</span>
+    if self.current_session_id is None:
+        self.current_session_id = f"session_{datetime.now():%Y%m%d_%H%M%S}"
+    <span class="cm"># ② 多模态智能处理：自动推断文件类型并保存元数据</span>
+    if memory_type == <span class="hl">"perceptual"</span> and file_path:
+        metadata.setdefault("modality", self._infer_modality(file_path))
+    <span class="cm"># ③ 上下文自动补充：会话信息 + 时间戳</span>
+    metadata.update({"session_id": ..., "timestamp": ...})</div>
+    <div class="notes">
+      <div class="note"><b>会话 ID 自动管理</b><p>每条记忆都有明确的会话归属，自动区分不同时间段的对话</p></div>
+      <div class="note"><b>importance 0.0–1.0</b><p>模拟大脑对信息重要性的评估，后续检索、整合、遗忘都依赖它</p></div>
+      <div class="note"><b>多模态智能处理</b><p>perceptual 类型自动推断文件 modality，并保存相关元数据</p></div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：_add_memory + 四种记忆类型的添加示例</span>
+      <button class="code-btn" data-modal="m-add">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">08</span>
+  </section>
+
+  <!-- 09 search 操作详解 -->
+  <section class="slide" data-screen-label="09 search 操作">
+    <span class="kicker">8.2.3 · 操作 2/4 · 检索</span>
+    <h2>search：记忆系统的核心</h2>
+    <p class="sub">在大量记忆中快速找到最相关的内容——语义理解、相关性计算与结果排序</p>
+    <div class="code-block" style="font-size: clamp(12px, 1.05vw, 19px);"><span class="hl">def _search_memory(self, query, limit=5, memory_types=None,
+                   memory_type=None, min_importance=0.1)</span>
+    <span class="cm"># 单复数参数标准化：用最自然的方式表达需求</span>
+    if memory_type and not memory_types:
+        memory_types = [memory_type]
+    results = self.memory_manager.retrieve_memories(
+        query=query, limit=limit, memory_types=memory_types,
+        min_importance=<span class="hl">min_importance</span>   <span class="cm"># 过滤低质量记忆</span>
+    )
+    <span class="cm"># 输出格式：[类型] 内容预览 (重要性: 0.80)</span></div>
+    <div class="notes">
+      <div class="note"><b>memory_type / memory_types</b><p>单数复数两种形式都支持，可限定检索的记忆类型</p></div>
+      <div class="note"><b>min_importance = 0.1</b><p>重要性低于阈值的记忆直接过滤，保证结果质量</p></div>
+      <div class="note"><b>limit</b><p>返回 Top-K 条最相关的记忆，默认 5 条</p></div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：_search_memory（参数标准化 / 格式化输出）+ 调用示例</span>
+      <button class="code-btn" data-modal="m-search">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">09</span>
+  </section>
+
+  <!-- 10 forget 遗忘 -->
+  <section class="slide" data-screen-label="10 forget 三种遗忘策略">
+    <span class="kicker">8.2.3 · 操作 3/4 · 遗忘</span>
+    <h2>forget：选择性遗忘</h2>
+    <div class="stages" style="grid-template-columns: repeat(3, 1fr); margin-top: 4vh;">
+      <div class="stage"><span class="n">策略 1</span><h3 style="font-size:clamp(20px,1.7vw,32px)">基于重要性</h3><p>删除重要性低于阈值的记忆</p></div>
+      <div class="stage"><span class="n">策略 2</span><h3 style="font-size:clamp(20px,1.7vw,32px)">基于时间</h3><p>删除超过指定天数的过时记忆</p></div>
+      <div class="stage"><span class="n">策略 3</span><h3 style="font-size:clamp(20px,1.7vw,32px)">基于容量</h3><p>接近上限时优先删最不重要的</p></div>
+    </div>
+    <div class="code-block" style="font-size: clamp(14px, 1.2vw, 22px);">memory_tool.execute("forget", strategy=<span class="hl">"importance_based"</span>, threshold=0.2)
+memory_tool.execute("forget", strategy=<span class="hl">"time_based"</span>,       max_age_days=30)
+memory_tool.execute("forget", strategy=<span class="hl">"capacity_based"</span>,   threshold=0.3)</div>
+    <button class="code-btn" data-modal="m-forget">查看完整代码 ↗</button>
+    <span class="pagenum">10</span>
+  </section>
+
+  <!-- 11 consolidate 整合 -->
+  <section class="slide" data-screen-label="11 consolidate 记忆整合">
+    <span class="kicker">8.2.3 · 操作 4/4 · 整合</span>
+    <h2>consolidate：短期 → 长期</h2>
+    <p class="sub">只有真正重要的信息才会被长期保存——系统按重要性阈值自动识别并转换类型</p>
+    <div class="flow">
+      <div class="node"><b>工作记忆</b><span>WORKING</span></div>
+      <div class="edge"><span class="cond">重要性 ≥ 0.7</span><span class="line"></span></div>
+      <div class="node"><b>情景记忆</b><span>EPISODIC</span></div>
+      <div class="edge"><span class="cond">重要性 ≥ 0.8</span><span class="line"></span></div>
+      <div class="node"><b>语义记忆</b><span>SEMANTIC</span></div>
+    </div>
+    <div class="code-block" style="font-size: clamp(13px, 1.15vw, 21px);">memory_tool.execute("consolidate",
+    from_type=<span class="hl">"working"</span>, to_type=<span class="hl">"episodic"</span>,
+    importance_threshold=<span class="hl">0.7</span>)</div>
+    <button class="code-btn" data-modal="m-consolidate">查看完整代码 ↗</button>
+    <span class="pagenum">11</span>
+  </section>
+
+  <!-- 12 MemoryManager（8.2.4） -->
+  <section class="slide" data-screen-label="12 MemoryManager 分层架构">
+    <span class="kicker">8.2.4 · 关注点分离</span>
+    <h2>MemoryManager：核心协调者</h2>
+    <div class="arch">
+      <div>
+        <div class="layer-label">接口层</div>
+        <div class="box"><b>MemoryTool</b><span>用户接口 · 参数处理 · execute 分发</span></div>
+      </div>
+      <div class="connector"></div>
+      <div>
+        <div class="layer-label">协调层</div>
+        <div class="box"><b>MemoryManager</b><span>MemoryStore 存储 + MemoryRetriever 检索 · 按需启用记忆模块</span></div>
+      </div>
+      <div class="connector"></div>
+      <div>
+        <div class="layer-label">记忆模块层</div>
+        <div class="row">
+          <div class="box"><i>WORKING</i><b>工作记忆</b><span>内存 + TTL</span></div>
+          <div class="box"><i>EPISODIC</i><b>情景记忆</b><span>SQLite + Qdrant</span></div>
+          <div class="box"><i>SEMANTIC</i><b>语义记忆</b><span>Neo4j + Qdrant</span></div>
+          <div class="box"><i>PERCEPTUAL</i><b>感知记忆</b><span>模态分离向量集合</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">按需启用：memory_types 里有的类型才会初始化对应模块</span>
+      <button class="code-btn" data-modal="m-manager">查看完整初始化代码 ↗</button>
+    </div>
+    <span class="pagenum">12</span>
+  </section>
+
+  <!-- 13 工作记忆（8.2.5） -->
+  <section class="slide" data-screen-label="13 工作记忆">
+    <span class="kicker">8.2.5 · 四种记忆类型 1/4</span>
+    <div class="detail-head"><h2>工作记忆</h2><span class="en">WORKING MEMORY</span></div>
+    <p class="sub">最快、最短命的一层——为响应速度而生</p>
+    <div class="detail-cols">
+      <div class="col"><span class="lbl">定位</span><p>存储当前会话的临时上下文，会话结束即清理</p><div class="mech">关键机制 · 添加时先做过期清理，容量满时自动移除最低优先级记忆</div></div>
+      <div class="col"><span class="lbl">存储</span><p>纯内存，容量默认 50 条 + TTL（60 分钟）自动过期</p><div class="mech">访问速度极快，代价是重启即丢失——符合"临时信息"的定位</div></div>
+      <div class="col"><span class="lbl">检索</span><p>TF-IDF 向量化 + 关键词匹配的混合检索，失败时回退关键词</p><div class="mech">评分 = 语义相似度 × 时间衰减 × 重要性权重</div></div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：WorkingMemory 类（add 过期清理 / retrieve 混合评分）</span>
+      <button class="code-btn" data-modal="m-working">查看完整代码 ↗</button>
+    </div>
+    <div class="formula">score = ( 相似度 × 时间衰减 ) × ( 0.8 + 重要性 × 0.4 )</div>
+    <span class="pagenum">13</span>
+  </section>
+
+  <!-- 14 情景记忆 -->
+  <section class="slide" data-screen-label="14 情景记忆">
+    <span class="kicker">8.2.5 · 四种记忆类型 2/4</span>
+    <div class="detail-head"><h2>情景记忆</h2><span class="en">EPISODIC MEMORY</span></div>
+    <p class="sub">智能体的"经历"，保持事件的完整性与时间序列</p>
+    <div class="detail-cols">
+      <div class="col"><span class="lbl">定位</span><p>长期存储交互事件与学习经历，支持会话级回顾</p><div class="mech">关键机制 · 维护会话索引（sessions），可按会话完整回顾事件序列</div></div>
+      <div class="col"><span class="lbl">存储</span><p>SQLite 负责结构化数据与复杂查询，Qdrant 负责高效向量检索</p><div class="mech">混合存储架构 · 事件持久化，重启不丢失</div></div>
+      <div class="col"><span class="lbl">检索</span><p>结构化预过滤 → 语义向量检索 → 综合评分排序</p><div class="mech">评分同时考虑语义相似与时间近因——既切题、又足够"新鲜"</div></div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：EpisodicMemory 类（会话索引 / 混合检索 / 评分）</span>
+      <button class="code-btn" data-modal="m-episodic">查看完整代码 ↗</button>
+    </div>
+    <div class="formula">score = ( 向量相似度 × 0.8 + 时间近因 × 0.2 ) × ( 0.8 + 重要性 × 0.4 )</div>
+    <span class="pagenum">14</span>
+  </section>
+
+  <!-- 15 语义记忆 -->
+  <section class="slide" data-screen-label="15 语义记忆">
+    <span class="kicker">8.2.5 · 四种记忆类型 3/4</span>
+    <div class="detail-head"><h2>语义记忆</h2><span class="en">SEMANTIC MEMORY</span></div>
+    <p class="sub">最复杂的一层——知识的结构化表示与关系推理</p>
+    <div class="detail-cols">
+      <div class="col"><span class="lbl">定位</span><p>抽象概念、规则与知识体系，支撑关联推理</p><div class="mech">关键机制 · 添加时自动抽取实体与关系，写入知识图谱</div></div>
+      <div class="col"><span class="lbl">存储</span><p>Neo4j 知识图谱存实体与关系，Qdrant 向量库做快速相似匹配</p><div class="mech">文本嵌入采用中文预训练模型，支持中英文 NLP 处理</div></div>
+      <div class="col"><span class="lbl">检索</span><p>向量检索（0.7）+ 图检索（0.3）混合排序</p><div class="mech">重要性权重限制在 [0.8, 1.2]，避免盖过相关性</div></div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：SemanticMemory 类（图谱构建 / 向量+图混合排序）</span>
+      <button class="code-btn" data-modal="m-semantic">查看完整代码 ↗</button>
+    </div>
+    <div class="formula">score = ( 向量 × 0.7 + 图 × 0.3 ) × ( 0.8 + 重要性 × 0.4 )</div>
+    <span class="pagenum">15</span>
+  </section>
+
+  <!-- 16 感知记忆 -->
+  <section class="slide" data-screen-label="16 感知记忆">
+    <span class="kicker">8.2.5 · 四种记忆类型 4/4</span>
+    <div class="detail-head"><h2>感知记忆</h2><span class="en">PERCEPTUAL MEMORY</span></div>
+    <p class="sub">多模态信息的入口——文本、图像、音频统一语义对齐</p>
+    <div class="detail-cols">
+      <div class="col"><span class="lbl">定位</span><p>图像、音频等多模态数据的存储与跨模态检索</p><div class="mech">关键机制 · CLIP 编码图像、CLAP 编码音频，统一向量空间语义对齐</div></div>
+      <div class="col"><span class="lbl">存储</span><p>按模态分离的向量集合（text / image / audio），避免维度不匹配</p><div class="mech">生命周期按信息重要性与可用存储空间动态管理</div></div>
+      <div class="col"><span class="lbl">检索</span><p>同模态精确匹配 + 跨模态语义对齐，时间近因指数衰减</p><div class="mech">跨模态检索时自动调整评分权重，保证结果多样性</div></div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：PerceptualMemory 类（跨模态检索 / 指数衰减）</span>
+      <button class="code-btn" data-modal="m-perceptual">查看完整代码 ↗</button>
+    </div>
+    <div class="formula">recency = e<sup>−0.1 × 小时数 / 24</sup>　（模拟遗忘曲线，最低 0.1）</div>
+    <span class="pagenum">16</span>
+  </section>
+
+  <!-- 17 收尾 -->
+  <section class="slide s-closing" data-screen-label="17 Closing">
+    <span class="kicker">CLOSING</span>
+    <blockquote>创建、检索、摘要、遗忘、整合——<br>一个闭环的智能记忆管理系统，<br>让 Agent 真正具备类人的记忆能力。</blockquote>
+    <span class="pagenum">17</span>
+  </section>
+
+</div>
+
+<!-- 翻页控件 -->
+<div id="nav">
+  <span id="counter">1 / 17</span>
+  <button id="prev" aria-label="上一页"><span class="arrow prev"></span></button>
+  <button id="next" aria-label="下一页"><span class="arrow next"></span></button>
+</div>
+
+<!-- ================= 代码弹窗 ================= -->
+<div class="modal" id="m-quick">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">30 秒上手记忆功能<span>8.2.2 完整代码</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">from hello_agents import SimpleAgent, HelloAgentsLLM, ToolRegistry
+from hello_agents.tools import MemoryTool
+
+# 创建具有记忆能力的Agent
+llm = HelloAgentsLLM()
+agent = SimpleAgent(name="记忆助手", llm=llm)
+
+# 创建记忆工具
+memory_tool = MemoryTool(user_id="user123")
+tool_registry = ToolRegistry()
+tool_registry.register_tool(memory_tool)
+agent.tool_registry = tool_registry
+
+# 体验记忆功能
+print("=== 添加多个记忆 ===")
+
+# 添加第一个记忆
+result1 = memory_tool.execute("add", content="用户张三是一名Python开发者，专注于机器学习和数据分析", memory_type="semantic", importance=0.8)
+print(f"记忆1: {result1}")
+
+# 添加第二个记忆
+result2 = memory_tool.execute("add", content="李四是前端工程师，擅长React和Vue.js开发", memory_type="semantic", importance=0.7)
+print(f"记忆2: {result2}")
+
+# 添加第三个记忆
+result3 = memory_tool.execute("add", content="王五是产品经理，负责用户体验设计和需求分析", memory_type="semantic", importance=0.6)
+print(f"记忆3: {result3}")
+
+print("\n=== 搜索特定记忆 ===")
+# 搜索前端相关的记忆
+print("🔍 搜索 '前端工程师':")
+result = memory_tool.execute("search", query="前端工程师", limit=3)
+print(result)
+
+print("\n=== 记忆摘要 ===")
+result = memory_tool.execute("summary")
+print(result)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-execute">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">MemoryTool.execute<span>统一入口，分发处理</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def execute(self, action: str, **kwargs) -> str:
+    """执行记忆操作
+
+    支持的操作：
+    - add: 添加记忆（支持4种类型: working/episodic/semantic/perceptual）
+    - search: 搜索记忆
+    - summary: 获取记忆摘要
+    - stats: 获取统计信息
+    - update: 更新记忆
+    - remove: 删除记忆
+    - forget: 遗忘记忆（多种策略）
+    - consolidate: 整合记忆（短期→长期）
+    - clear_all: 清空所有记忆
+    """
+
+    if action == "add":
+        return self._add_memory(**kwargs)
+    elif action == "search":
+        return self._search_memory(**kwargs)
+    elif action == "summary":
+        return self._get_summary(**kwargs)
+    # ... 其他操作</div>
+  </div>
+</div>
+
+<div class="modal" id="m-add">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">add 操作<span>_add_memory 完整实现 + 四类型示例</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _add_memory(
+    self,
+    content: str = "",
+    memory_type: str = "working",
+    importance: float = 0.5,
+    file_path: str = None,
+    modality: str = None,
+    **metadata
+) -> str:
+    """添加记忆"""
+    try:
+        # 确保会话ID存在
+        if self.current_session_id is None:
+            self.current_session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        # 感知记忆文件支持
+        if memory_type == "perceptual" and file_path:
+            inferred = modality or self._infer_modality(file_path)
+            metadata.setdefault("modality", inferred)
+            metadata.setdefault("raw_data", file_path)
+
+        # 添加会话信息到元数据
+        metadata.update({
+            "session_id": self.current_session_id,
+            "timestamp": datetime.now().isoformat()
+        })
+
+        memory_id = self.memory_manager.add_memory(
+            content=content,
+            memory_type=memory_type,
+            importance=importance,
+            metadata=metadata,
+            auto_classify=False
+        )
+
+        return f"✅ 记忆已添加 (ID: {memory_id[:8]}...)"
+
+    except Exception as e:
+        return f"❌ 添加记忆失败: {str(e)}"
+
+
+# ============ 四种记忆类型的使用示例 ============
+
+# 1. 工作记忆 - 临时信息，容量有限
+memory_tool.execute("add",
+    content="用户刚才问了关于Python函数的问题",
+    memory_type="working",
+    importance=0.6
+)
+
+# 2. 情景记忆 - 具体事件和经历
+memory_tool.execute("add",
+    content="2024年3月15日，用户张三完成了第一个Python项目",
+    memory_type="episodic",
+    importance=0.8,
+    event_type="milestone",
+    location="在线学习平台"
+)
+
+# 3. 语义记忆 - 抽象知识和概念
+memory_tool.execute("add",
+    content="Python是一种解释型、面向对象的编程语言",
+    memory_type="semantic",
+    importance=0.9,
+    knowledge_type="factual"
+)
+
+# 4. 感知记忆 - 多模态信息
+memory_tool.execute("add",
+    content="用户上传了一张Python代码截图，包含函数定义",
+    memory_type="perceptual",
+    importance=0.7,
+    modality="image",
+    file_path="./uploads/code_screenshot.png"
+)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-search">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">search 操作<span>_search_memory 完整实现 + 调用示例</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _search_memory(
+    self,
+    query: str,
+    limit: int = 5,
+    memory_types: List[str] = None,
+    memory_type: str = None,
+    min_importance: float = 0.1
+) -> str:
+    """搜索记忆"""
+    try:
+        # 参数标准化处理
+        if memory_type and not memory_types:
+            memory_types = [memory_type]
+
+        results = self.memory_manager.retrieve_memories(
+            query=query,
+            limit=limit,
+            memory_types=memory_types,
+            min_importance=min_importance
+        )
+
+        if not results:
+            return f"🔍 未找到与 '{query}' 相关的记忆"
+
+        # 格式化结果
+        formatted_results = []
+        formatted_results.append(f"🔍 找到 {len(results)} 条相关记忆:")
+
+        for i, memory in enumerate(results, 1):
+            memory_type_label = {
+                "working": "工作记忆",
+                "episodic": "情景记忆",
+                "semantic": "语义记忆",
+                "perceptual": "感知记忆"
+            }.get(memory.memory_type, memory.memory_type)
+
+            content_preview = memory.content[:80] + "..." if len(memory.content) > 80 else memory.content
+            formatted_results.append(
+                f"{i}. [{memory_type_label}] {content_preview} (重要性: {memory.importance:.2f})"
+            )
+
+        return "\n".join(formatted_results)
+
+    except Exception as e:
+        return f"❌ 搜索记忆失败: {str(e)}"
+
+
+# ============ 调用示例 ============
+
+# 基础搜索
+result = memory_tool.execute("search", query="Python编程", limit=5)
+
+# 指定记忆类型搜索
+result = memory_tool.execute("search",
+    query="学习进度",
+    memory_type="episodic",
+    limit=3
+)
+
+# 多类型搜索
+result = memory_tool.execute("search",
+    query="函数定义",
+    memory_types=["semantic", "episodic"],
+    min_importance=0.5
+)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-forget">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">forget 操作<span>三种遗忘策略</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _forget(self, strategy: str = "importance_based", threshold: float = 0.1, max_age_days: int = 30) -> str:
+    """遗忘记忆（支持多种策略）"""
+    try:
+        count = self.memory_manager.forget_memories(
+            strategy=strategy,
+            threshold=threshold,
+            max_age_days=max_age_days
+        )
+        return f"🧹 已遗忘 {count} 条记忆（策略: {strategy}）"
+    except Exception as e:
+        return f"❌ 遗忘记忆失败: {str(e)}"
+
+
+# ============ 三种遗忘策略的使用 ============
+
+# 1. 基于重要性的遗忘 - 删除重要性低于阈值的记忆
+memory_tool.execute("forget",
+    strategy="importance_based",
+    threshold=0.2
+)
+
+# 2. 基于时间的遗忘 - 删除超过指定天数的记忆
+memory_tool.execute("forget",
+    strategy="time_based",
+    max_age_days=30
+)
+
+# 3. 基于容量的遗忘 - 当记忆数量超限时删除最不重要的
+memory_tool.execute("forget",
+    strategy="capacity_based",
+    threshold=0.3
+)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-consolidate">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">consolidate 操作<span>记忆固化：短期 → 长期</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _consolidate(self, from_type: str = "working", to_type: str = "episodic", importance_threshold: float = 0.7) -> str:
+    """整合记忆（将重要的短期记忆提升为长期记忆）"""
+    try:
+        count = self.memory_manager.consolidate_memories(
+            from_type=from_type,
+            to_type=to_type,
+            importance_threshold=importance_threshold,
+        )
+        return f"🔄 已整合 {count} 条记忆为长期记忆（{from_type} → {to_type}，阈值={importance_threshold}）"
+    except Exception as e:
+        return f"❌ 整合记忆失败: {str(e)}"
+
+
+# ============ 记忆整合的使用示例 ============
+
+# 将重要的工作记忆转为情景记忆
+memory_tool.execute("consolidate",
+    from_type="working",
+    to_type="episodic",
+    importance_threshold=0.7
+)
+
+# 将重要的情景记忆转为语义记忆
+memory_tool.execute("consolidate",
+    from_type="episodic",
+    to_type="semantic",
+    importance_threshold=0.8
+)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-manager">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">MemoryTool / MemoryManager 初始化<span>8.2.4 分层协作</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">class MemoryTool(Tool):
+    """记忆工具 - 为Agent提供记忆功能"""
+
+    def __init__(
+        self,
+        user_id: str = "default_user",
+        memory_config: MemoryConfig = None,
+        memory_types: List[str] = None
+    ):
+        super().__init__(
+            name="memory",
+            description="记忆工具 - 可以存储和检索对话历史、知识和经验"
+        )
+
+        # 初始化记忆管理器
+        self.memory_config = memory_config or MemoryConfig()
+        self.memory_types = memory_types or ["working", "episodic", "semantic"]
+
+        self.memory_manager = MemoryManager(
+            config=self.memory_config,
+            user_id=user_id,
+            enable_working="working" in self.memory_types,
+            enable_episodic="episodic" in self.memory_types,
+            enable_semantic="semantic" in self.memory_types,
+            enable_perceptual="perceptual" in self.memory_types
+        )
+
+
+class MemoryManager:
+    """记忆管理器 - 统一的记忆操作接口"""
+
+    def __init__(
+        self,
+        config: Optional[MemoryConfig] = None,
+        user_id: str = "default_user",
+        enable_working: bool = True,
+        enable_episodic: bool = True,
+        enable_semantic: bool = True,
+        enable_perceptual: bool = False
+    ):
+        self.config = config or MemoryConfig()
+        self.user_id = user_id
+
+        # 初始化存储和检索组件
+        self.store = MemoryStore(self.config)
+        self.retriever = MemoryRetriever(self.store, self.config)
+
+        # 初始化各类型记忆
+        self.memory_types = {}
+
+        if enable_working:
+            self.memory_types['working'] = WorkingMemory(self.config, self.store)
+
+        if enable_episodic:
+            self.memory_types['episodic'] = EpisodicMemory(self.config, self.store)
+
+        if enable_semantic:
+            self.memory_types['semantic'] = SemanticMemory(self.config, self.store)
+
+        if enable_perceptual:
+            self.memory_types['perceptual'] = PerceptualMemory(self.config, self.store)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-working">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">WorkingMemory<span>纯内存 + TTL + 混合检索</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">class WorkingMemory:
+    """工作记忆实现
+    特点：
+    - 容量有限（默认50条）+ TTL自动清理
+    - 纯内存存储，访问速度极快
+    - 混合检索：TF-IDF向量化 + 关键词匹配
+    """
+
+    def __init__(self, config: MemoryConfig):
+        self.max_capacity = config.working_memory_capacity or 50
+        self.max_age_minutes = config.working_memory_ttl or 60
+        self.memories = []
+
+    def add(self, memory_item: MemoryItem) -> str:
+        """添加工作记忆"""
+        self._expire_old_memories()  # 过期清理
+
+        if len(self.memories) >= self.max_capacity:
+            self._remove_lowest_priority_memory()  # 容量管理
+
+        self.memories.append(memory_item)
+        return memory_item.id
+
+    def retrieve(self, query: str, limit: int = 5, **kwargs) -> List[MemoryItem]:
+        """混合检索：TF-IDF向量化 + 关键词匹配"""
+        self._expire_old_memories()
+
+        # 尝试TF-IDF向量检索
+        vector_scores = self._try_tfidf_search(query)
+
+        # 计算综合分数
+        scored_memories = []
+        for memory in self.memories:
+            vector_score = vector_scores.get(memory.id, 0.0)
+            keyword_score = self._calculate_keyword_score(query, memory.content)
+
+            # 混合评分
+            base_relevance = vector_score * 0.7 + keyword_score * 0.3 if vector_score > 0 else keyword_score
+            time_decay = self._calculate_time_decay(memory.timestamp)
+            importance_weight = 0.8 + (memory.importance * 0.4)
+
+            final_score = base_relevance * time_decay * importance_weight
+            if final_score > 0:
+                scored_memories.append((final_score, memory))
+
+        scored_memories.sort(key=lambda x: x[0], reverse=True)
+        return [memory for _, memory in scored_memories[:limit]]</div>
+  </div>
+</div>
+
+<div class="modal" id="m-episodic">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">EpisodicMemory<span>SQLite + Qdrant 混合架构</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">class EpisodicMemory:
+    """情景记忆实现
+    特点：
+    - SQLite+Qdrant混合存储架构
+    - 支持时间序列和会话级检索
+    - 结构化过滤 + 语义向量检索
+    """
+
+    def __init__(self, config: MemoryConfig):
+        self.doc_store = SQLiteDocumentStore(config.database_path)
+        self.vector_store = QdrantVectorStore(config.qdrant_url, config.qdrant_api_key)
+        self.embedder = create_embedding_model_with_fallback()
+        self.sessions = {}  # 会话索引
+
+    def add(self, memory_item: MemoryItem) -> str:
+        """添加情景记忆"""
+        # 创建情景对象
+        episode = Episode(
+            episode_id=memory_item.id,
+            session_id=memory_item.metadata.get("session_id", "default"),
+            timestamp=memory_item.timestamp,
+            content=memory_item.content,
+            context=memory_item.metadata
+        )
+
+        # 更新会话索引
+        session_id = episode.session_id
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+        self.sessions[session_id].append(episode.episode_id)
+
+        # 持久化存储（SQLite + Qdrant）
+        self._persist_episode(episode)
+        return memory_item.id
+
+    def retrieve(self, query: str, limit: int = 5, **kwargs) -> List[MemoryItem]:
+        """混合检索：结构化过滤 + 语义向量检索"""
+        # 1. 结构化预过滤（时间范围、重要性等）
+        candidate_ids = self._structured_filter(**kwargs)
+
+        # 2. 向量语义检索
+        hits = self._vector_search(query, limit * 5, kwargs.get("user_id"))
+
+        # 3. 综合评分与排序
+        results = []
+        for hit in hits:
+            if self._should_include(hit, candidate_ids, kwargs):
+                score = self._calculate_episode_score(hit)
+                memory_item = self._create_memory_item(hit)
+                results.append((score, memory_item))
+
+        results.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in results[:limit]]
+
+    def _calculate_episode_score(self, hit) -> float:
+        """情景记忆评分算法"""
+        vec_score = float(hit.get("score", 0.0))
+        recency_score = self._calculate_recency(hit["metadata"]["timestamp"])
+        importance = hit["metadata"].get("importance", 0.5)
+
+        # 评分公式：(向量相似度 × 0.8 + 时间近因性 × 0.2) × 重要性权重
+        base_relevance = vec_score * 0.8 + recency_score * 0.2
+        importance_weight = 0.8 + (importance * 0.4)
+
+        return base_relevance * importance_weight</div>
+  </div>
+</div>
+
+<div class="modal" id="m-semantic">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">SemanticMemory<span>Neo4j 知识图谱 + Qdrant 向量库</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def add(self, memory_item: MemoryItem) -> str:
+    """添加语义记忆"""
+    # 1. 生成文本嵌入
+    embedding = self.embedding_model.encode(memory_item.content)
+
+    # 2. 提取实体和关系
+    entities = self._extract_entities(memory_item.content)
+    relations = self._extract_relations(memory_item.content, entities)
+
+    # 3. 存储到Neo4j图数据库
+    for entity in entities:
+        self._add_entity_to_graph(entity, memory_item)
+
+    for relation in relations:
+        self._add_relation_to_graph(relation, memory_item)
+
+    # 4. 存储到Qdrant向量数据库
+    metadata = {
+        "memory_id": memory_item.id,
+        "entities": [e.entity_id for e in entities],
+        "entity_count": len(entities),
+        "relation_count": len(relations)
+    }
+
+    self.vector_store.add_vectors(
+        vectors=[embedding.tolist()],
+        metadata=[metadata],
+        ids=[memory_item.id]
+    )
+
+
+def retrieve(self, query: str, limit: int = 5, **kwargs) -> List[MemoryItem]:
+    """检索语义记忆"""
+    # 1. 向量检索
+    vector_results = self._vector_search(query, limit * 2, user_id)
+
+    # 2. 图检索
+    graph_results = self._graph_search(query, limit * 2, user_id)
+
+    # 3. 混合排序
+    combined_results = self._combine_and_rank_results(
+        vector_results, graph_results, query, limit
+    )
+
+    return combined_results[:limit]
+
+
+def _combine_and_rank_results(self, vector_results, graph_results, query, limit):
+    """混合排序结果"""
+    combined = {}
+
+    # 合并向量和图检索结果
+    for result in vector_results:
+        combined[result["memory_id"]] = {**result, "vector_score": result.get("score", 0.0), "graph_score": 0.0}
+
+    for result in graph_results:
+        memory_id = result["memory_id"]
+        if memory_id in combined:
+            combined[memory_id]["graph_score"] = result.get("similarity", 0.0)
+        else:
+            combined[memory_id] = {**result, "vector_score": 0.0, "graph_score": result.get("similarity", 0.0)}
+
+    # 计算混合分数
+    for memory_id, result in combined.items():
+        vector_score = result["vector_score"]
+        graph_score = result["graph_score"]
+        importance = result.get("importance", 0.5)
+
+        # 基础相似度得分
+        base_relevance = vector_score * 0.7 + graph_score * 0.3
+
+        # 重要性权重 [0.8, 1.2]
+        importance_weight = 0.8 + (importance * 0.4)
+
+        # 最终得分：相似度 × 重要性权重
+        result["combined_score"] = base_relevance * importance_weight
+
+    return sorted(combined.values(), key=lambda x: x["combined_score"], reverse=True)[:limit]</div>
+  </div>
+</div>
+
+<div class="modal" id="m-perceptual">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">PerceptualMemory<span>跨模态检索 + 指数衰减</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def retrieve(self, query: str, limit: int = 5, **kwargs) -> List[MemoryItem]:
+    """检索感知记忆（可筛模态；同模态向量检索+时间/重要性融合）"""
+    user_id = kwargs.get("user_id")
+    target_modality = kwargs.get("target_modality")
+    query_modality = kwargs.get("query_modality", target_modality or "text")
+
+    # 同模态向量检索
+    try:
+        query_vector = self._encode_data(query, query_modality)
+        store = self._get_vector_store_for_modality(target_modality or query_modality)
+
+        where = {"memory_type": "perceptual"}
+        if user_id:
+            where["user_id"] = user_id
+        if target_modality:
+            where["modality"] = target_modality
+
+        hits = store.search_similar(
+            query_vector=query_vector,
+            limit=max(limit * 5, 20),
+            where=where
+        )
+    except Exception:
+        hits = []
+
+    # 融合排序（向量相似度 + 时间近因性 + 重要性权重）
+    results = []
+    for hit in hits:
+        vector_score = float(hit.get("score", 0.0))
+        recency_score = self._calculate_recency_score(hit["metadata"]["timestamp"])
+        importance = hit["metadata"].get("importance", 0.5)
+
+        # 评分算法
+        base_relevance = vector_score * 0.8 + recency_score * 0.2
+        importance_weight = 0.8 + (importance * 0.4)
+        combined_score = base_relevance * importance_weight
+
+        results.append((combined_score, self._create_memory_item(hit)))
+
+    results.sort(key=lambda x: x[0], reverse=True)
+    return [item for _, item in results[:limit]]
+
+
+def _calculate_recency_score(self, timestamp: str) -> float:
+    """计算时间近因性得分"""
+    try:
+        memory_time = datetime.fromisoformat(timestamp)
+        current_time = datetime.now()
+        age_hours = (current_time - memory_time).total_seconds() / 3600
+
+        # 指数衰减：24小时内保持高分，之后逐渐衰减
+        decay_factor = 0.1  # 衰减系数
+        recency_score = math.exp(-decay_factor * age_hours / 24)
+
+        return max(0.1, recency_score)  # 最低保持0.1的基础分数
+    except Exception:
+        return 0.5  # 默认中等分数</div>
+  </div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('counter');
+  let cur = parseInt(localStorage.getItem('memory-deck-v2-pos') || '0', 10);
+  // URL hash 优先（#p5 → 第 5 页），便于分享和定位
+  const m = location.hash.match(/^#p(\d+)$/);
+  if (m) cur = parseInt(m[1], 10) - 1;
+  if (isNaN(cur) || cur < 0 || cur >= slides.length) cur = 0;
+
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    counter.textContent = (cur + 1) + ' / ' + slides.length;
+    localStorage.setItem('memory-deck-v2-pos', String(cur));
+    history.replaceState(null, '', '#p' + (cur + 1));
+  }
+
+  document.getElementById('prev').addEventListener('click', () => show(cur - 1));
+  document.getElementById('next').addEventListener('click', () => show(cur + 1));
+
+  // ---------- 代码弹窗 ----------
+  document.querySelectorAll('[data-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const modal = document.getElementById(btn.dataset.modal);
+      if (modal) modal.classList.add('open');
+    });
+  });
+  document.querySelectorAll('.modal').forEach((modal) => {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('.modal-close')) {
+        modal.classList.remove('open');
+      }
+    });
+  });
+
+  // ---------- Python 语法高亮（弹窗完整代码） ----------
+  document.querySelectorAll('.modal-code').forEach((el) => {
+    const t = el.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const re = /(#[^\n]*)|((?:[fFrRbB]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'))|\b(def|class|return|if|elif|else|try|except|finally|for|while|in|not|and|or|is|None|True|False|import|from|as|with|lambda|pass|raise|self|print)\b|\b(\d+(?:\.\d+)?)\b/g;
+    el.innerHTML = t.replace(re, (m, cm, str, kw, num) => {
+      if (cm)  return '<span class="tk-cm">' + cm + '</span>';
+      if (str) return '<span class="tk-str">' + str + '</span>';
+      if (kw)  return '<span class="tk-kw">' + kw + '</span>';
+      if (num) return '<span class="tk-num">' + num + '</span>';
+      return m;
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    // 弹窗打开时：Esc 关闭，屏蔽翻页键
+    const open = document.querySelector('.modal.open');
+    if (open) {
+      if (e.key === 'Escape') open.classList.remove('open');
+      return;
+    }
+    if (e.key === 'ArrowRight' || e.key === ' ') show(cur + 1);
+    if (e.key === 'ArrowLeft') show(cur - 1);
+  });
+
+  show(cur);
+</script>
+
+</body>
+</html>

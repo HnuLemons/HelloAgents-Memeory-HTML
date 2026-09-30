@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG系统：知识检索增强 · HelloAgents 8.3</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700;900&family=Noto+Sans+SC:wght@400;500&family=JetBrains+Mono:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:ital,opsz,wght@1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:      #F1ECDE;
+    --paper-deep: #E6DCC4;
+    --ink:        #1A1A18;
+    --ink-2:      #736D5A;
+    --teal:       #1B4B5A;
+    --hairline:   #C8BEA4;
+    --amber:      #E8C468;
+    --serif: "Noto Serif SC", "Source Serif 4", serif;
+    --sans:  "Noto Sans SC", sans-serif;
+    --mono:  "JetBrains Mono", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 幻灯片引擎：铺满整个视口 ---------- */
+  #stage { position: fixed; inset: 0; }
+
+  .slide {
+    position: absolute; inset: 0;
+    padding: clamp(48px, 7vh, 88px) clamp(40px, 6vw, 120px);
+    display: none;
+    flex-direction: column;
+    text-wrap: pretty;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; animation: fade 0.7s ease; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .slide.active { animation: none; } }
+
+  /* ---------- 通用元素 ---------- */
+  .kicker {
+    font-family: var(--sans);
+    font-size: clamp(13px, 1.1vw, 20px); font-weight: 500;
+    letter-spacing: 0.14em;
+    color: var(--teal);
+  }
+  .slide h2 { font-size: clamp(34px, 3.4vw, 64px); font-weight: 700; margin: 1.2vh 0 0.8vh; }
+  .slide .sub { font-size: clamp(18px, 1.6vw, 30px); color: var(--ink-2); max-width: 80%; }
+  .pagenum {
+    position: absolute; bottom: clamp(24px, 4vh, 48px); left: clamp(40px, 6vw, 120px);
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 18px); color: var(--ink-2);
+  }
+
+  /* ---------- 封面 ---------- */
+  .s-title { justify-content: center; }
+  .s-title h1 { font-size: clamp(56px, 6.8vw, 128px); font-weight: 900; line-height: 1.2; margin: 3vh 0 4vh; }
+  .s-title .dek { font-size: clamp(19px, 1.7vw, 32px); color: var(--ink-2); }
+  .s-title .dek em { font-family: "Source Serif 4", var(--serif); font-style: italic; color: var(--teal); }
+  .s-title .speaker {
+    margin-top: 7vh;
+    font-family: var(--sans); font-size: clamp(15px, 1.25vw, 23px);
+    letter-spacing: 0.12em;
+    display: inline-block; align-self: flex-start;
+    background: var(--amber); color: var(--ink);
+    padding: 0.35em 0.8em;
+  }
+
+  /* ---------- 五阶段卡片 ---------- */
+  .stages { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 6vh; }
+  .stage { padding: 0 clamp(14px, 1.5vw, 28px); border-left: 1px solid var(--hairline); }
+  .stage:first-child { border-left: none; padding-left: 0; }
+  .stage .n { font-family: var(--mono); font-size: clamp(12px, 1vw, 18px); color: var(--teal); display: block; margin-bottom: 2vh; }
+  .stage h3 { font-size: clamp(24px, 2.1vw, 40px); font-weight: 700; margin-bottom: 1vh; }
+  .stage p { font-size: clamp(15px, 1.2vw, 23px); color: var(--ink-2); line-height: 1.6; }
+
+  .stages.tall {
+    flex: 1; min-height: 0;
+    margin-top: 4vh; margin-bottom: 6vh;
+    gap: clamp(12px, 1.2vw, 24px);
+  }
+  .stages.tall .stage {
+    display: flex; flex-direction: column;
+    background: var(--paper-deep);
+    border-left: none;
+    padding: clamp(24px, 3.5vh, 48px) clamp(16px, 1.5vw, 28px);
+  }
+  .stages.tall .stage:first-child { padding-left: clamp(16px, 1.5vw, 28px); }
+  .stages.tall .stage .n { margin-bottom: auto; }
+  .stages.tall .stage h3 { font-size: clamp(32px, 2.8vw, 52px); margin-top: auto; margin-bottom: 1.6vh; }
+  .stages.tall .stage p { margin-bottom: auto; }
+  .stages.tall .stage .map {
+    margin-top: auto; padding-top: 1.6vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 四宫格 ---------- */
+  .memory-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+    background: var(--hairline); border: 1px solid var(--hairline);
+    margin-top: 4vh; flex: 1; min-height: 0;
+  }
+  .memory-cell { background: var(--paper); padding: clamp(20px, 4vh, 44px) clamp(24px, 2.5vw, 48px); display: flex; flex-direction: column; }
+  .memory-cell .tag { font-family: var(--mono); font-size: clamp(13px, 1.1vw, 19px); color: var(--teal); display: block; margin-bottom: auto; }
+  .memory-cell h3 { font-size: clamp(24px, 2vw, 38px); font-weight: 700; margin-bottom: 1.2vh; }
+  .memory-cell p { font-size: clamp(16px, 1.3vw, 24px); color: var(--ink-2); line-height: 1.65; margin-bottom: auto; }
+  .memory-cell .meta {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal);
+  }
+
+  /* ---------- 三列详情页 ---------- */
+  .detail-head { display: flex; align-items: baseline; gap: 40px; }
+  .detail-head .en { font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal); }
+  .detail-cols {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    flex: 1; min-height: 0; margin-top: 3vh;
+  }
+  .detail-cols .col {
+    padding: 0 clamp(18px, 2vw, 40px);
+    border-left: 1px solid var(--hairline);
+    display: flex; flex-direction: column;
+  }
+  .detail-cols .col:first-child { border-left: none; padding-left: 0; }
+  .detail-cols .lbl {
+    font-family: var(--sans); font-size: clamp(13px, 1.05vw, 20px);
+    color: var(--ink-2); letter-spacing: 0.08em; margin-bottom: auto;
+  }
+  .detail-cols .col > p { font-size: clamp(18px, 1.55vw, 28px); line-height: 1.65; margin-bottom: auto; }
+  .detail-cols .mech {
+    margin-top: auto; padding-top: 1.8vh; border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---------- 组件化流程图 ---------- */
+  .cogmap {
+    flex: 1; min-height: 0; margin-top: 2vh; margin-bottom: 2vh;
+    display: flex; align-items: stretch; gap: clamp(10px, 1.2vw, 24px);
+  }
+  .cog-group {
+    border: 1px solid var(--hairline); background: var(--paper-deep);
+    padding: clamp(20px, 3vh, 40px) clamp(16px, 1.5vw, 32px);
+    display: flex; flex-direction: column; justify-content: center; gap: 2.5vh;
+    flex: 1;
+  }
+  .cog-group .cog-label {
+    font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px);
+    color: var(--teal); letter-spacing: 0.1em; text-align: center;
+  }
+  .cog-node {
+    border: 1px solid var(--ink); background: var(--paper);
+    padding: 1.8vh clamp(12px, 1.2vw, 24px); text-align: center;
+  }
+  .cog-node b { display: block; font-size: clamp(18px, 1.7vw, 32px); font-weight: 700; white-space: nowrap; }
+  .cog-node span { font-family: var(--mono); font-size: clamp(10px, 0.9vw, 15px); color: var(--ink-2); letter-spacing: 0.05em; }
+  .cog-node.hub { border-width: 2px; }
+  .cog-row { display: flex; align-items: center; gap: clamp(8px, 1vw, 20px); }
+  .cog-row .cog-node { flex: 1; }
+  .cog-edge { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+  .cog-edge .cond { font-family: var(--mono); font-size: clamp(10px, 0.9vw, 15px); color: var(--teal); white-space: nowrap; }
+  .cog-edge .line { width: clamp(32px, 3.5vw, 72px); height: 1px; background: var(--ink); position: relative; }
+  .cog-edge .line::after {
+    content: ""; position: absolute; right: 0; top: -4.5px;
+    border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+    border-left: 8px solid var(--ink);
+  }
+
+  /* ---------- 双泳道工作流（图 8.5 重绘） ---------- */
+  .wf { flex: 1; min-height: 0; margin-top: 1vh; display: flex; flex-direction: column; gap: 1.2vh; }
+  .wf-lanes { flex: 1; min-height: 0; display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: clamp(10px, 1.2vw, 24px); }
+  .wf-lane {
+    border: 1px solid var(--hairline); background: var(--paper-deep);
+    padding: 1.6vh clamp(10px, 1vw, 20px);
+    display: flex; flex-direction: column; gap: 1vh;
+  }
+  .wf-lane .cog-label { font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px); color: var(--teal); letter-spacing: 0.1em; text-align: center; }
+  .wf-node {
+    border: 1px solid var(--ink); background: var(--paper);
+    padding: 1vh clamp(8px, 0.8vw, 16px); text-align: center;
+  }
+  .wf-node b { display: block; font-size: clamp(14px, 1.2vw, 22px); font-weight: 700; white-space: nowrap; }
+  .wf-node span { font-family: var(--mono); font-size: clamp(10px, 0.8vw, 14px); color: var(--ink-2); }
+  .wf-node.code b { font-family: var(--mono); font-weight: 600; }
+  .wf-node.hub { border-width: 2px; }
+  .wf-down { width: 1px; height: 1.6vh; background: var(--ink); margin: 0 auto; position: relative; flex-shrink: 0; }
+  .wf-down::after {
+    content: ""; position: absolute; bottom: 0; left: -4px;
+    border-left: 4.5px solid transparent; border-right: 4.5px solid transparent;
+    border-top: 7px solid var(--ink);
+  }
+
+  /* ---------- 双阶段纵向流程（基本工作流程页） ---------- */
+  .pf { flex: 1; min-height: 0; margin-top: 2.5vh; display: flex; flex-direction: column; gap: 1.2vh; }
+  .pf-phase {
+    flex: 1; border: 1px solid var(--hairline); background: var(--paper-deep);
+    padding: 2vh clamp(24px, 2.5vw, 48px);
+    display: flex; flex-direction: column; justify-content: center; gap: 2.2vh;
+  }
+  .pf-phase .cog-label {
+    font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px);
+    color: var(--teal); letter-spacing: 0.1em; text-align: center;
+  }
+  .pf-mid { display: flex; flex-direction: column; align-items: center; }
+
+  /* ---------- 代码块 ---------- */
+  .code-block {
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: clamp(15px, 1.3vw, 24px); line-height: 1.75;
+    padding: clamp(24px, 3.5vh, 44px) clamp(28px, 3vw, 56px); margin-top: 3vh;
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
+    overflow: hidden; white-space: pre;
+  }
+  .code-block .cm { color: var(--hairline); }
+  .code-block .hl { color: var(--amber); }
+
+  /* ---------- 完整代码按钮 / 展开条 ---------- */
+  .code-btn {
+    align-self: flex-start;
+    margin-top: 2.5vh;
+    font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px);
+    color: var(--ink); background: transparent;
+    border: 1px solid var(--ink); padding: 1.2vh 1.6vw;
+    cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .code-btn:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .expand-bar {
+    background: var(--paper-deep);
+    margin-top: 3vh; padding: 1.8vh clamp(20px, 2vw, 40px);
+    display: flex; align-items: center; gap: 2vw;
+  }
+  .expand-bar .lbl {
+    font-family: var(--sans); font-size: clamp(13px, 1vw, 18px);
+    color: var(--ink-2); letter-spacing: 0.06em;
+  }
+  .expand-bar .code-btn { margin-top: 0; margin-left: auto; }
+
+  /* ---------- 代码弹窗 ---------- */
+  .modal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(26, 26, 24, 0.55);
+    display: none; align-items: center; justify-content: center;
+  }
+  .modal.open { display: flex; }
+  .modal-panel {
+    background: var(--paper);
+    width: min(1240px, 88vw); max-height: 86vh;
+    border: 1px solid var(--ink);
+    box-shadow: 0 32px 64px rgba(0, 0, 0, 0.3);
+    display: flex; flex-direction: column;
+  }
+  .modal-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 24px;
+    padding: 2vh 2.5vw; border-bottom: 1px solid var(--hairline);
+  }
+  .modal-title { font-size: clamp(17px, 1.4vw, 26px); font-weight: 700; }
+  .modal-title span { font-family: var(--mono); font-size: 0.7em; color: var(--teal); font-weight: 400; margin-left: 12px; }
+  .modal-close {
+    border: 1px solid var(--ink-2); background: transparent; color: var(--ink);
+    width: 44px; height: 44px; font-size: 22px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    transition: background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .modal-close:hover { background: var(--teal); border-color: var(--teal); color: var(--paper); }
+  .modal-code {
+    flex: 1; overflow: auto;
+    background: var(--ink); color: var(--paper);
+    font-family: var(--mono); font-size: clamp(12px, 0.95vw, 16px); line-height: 1.7;
+    padding: 3vh 2.5vw; white-space: pre;
+  }
+  /* Python 语法高亮（配色从色板派生：amber 关键字 / 浅 teal 字符串 / hairline 注释 / 浅 amber 数字） */
+  .tk-cm { color: var(--hairline); font-style: italic; }
+  .tk-str { color: #7FB3C4; }
+  .tk-kw { color: var(--amber); }
+  .tk-num { color: #F0DCAE; }
+
+  /* ---------- 公式 ---------- */
+  .formula {
+    font-family: var(--mono); font-size: clamp(17px, 1.6vw, 30px); color: var(--teal);
+    border-top: 1px solid var(--hairline); border-bottom: 1px solid var(--hairline);
+    padding: 2.6vh 0; margin-top: 3vh; text-align: center;
+  }
+
+  /* ---------- 流向图 ---------- */
+  .flow { display: flex; align-items: center; justify-content: center; gap: clamp(16px, 2vw, 40px); margin-top: 4vh; }
+  .flow .node {
+    border: 1px solid var(--ink); padding: 2.2vh clamp(20px, 2vw, 40px);
+    text-align: center; background: var(--paper);
+  }
+  .flow .node b { display: block; font-size: clamp(20px, 1.8vw, 32px); font-weight: 700; white-space: nowrap; }
+  .flow .node span { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--ink-2); }
+  .flow .edge { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .flow .edge .cond { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); white-space: nowrap; }
+  .flow .edge .line { width: clamp(48px, 5vw, 96px); height: 1px; background: var(--ink); position: relative; }
+  .flow .edge .line::after {
+    content: ""; position: absolute; right: 0; top: -5px;
+    border-top: 5.5px solid transparent; border-bottom: 5.5px solid transparent;
+    border-left: 9px solid var(--ink);
+  }
+  /* 紧凑流向图（页面底部锚点 / 页内流程条） */
+  .flow.compact { margin-top: 2.5vh; }
+  .flow.compact .node { padding: 1.2vh clamp(12px, 1.2vw, 24px); }
+  .flow.compact .node b { font-size: clamp(14px, 1.15vw, 20px); }
+  .flow.compact .node span { font-size: clamp(10px, 0.8vw, 13px); }
+  .flow.compact .edge .line { width: clamp(24px, 2.5vw, 48px); }
+  .flow.compact .edge .cond { font-size: clamp(10px, 0.85vw, 14px); }
+
+  /* ---------- 分层架构图 ---------- */
+  .arch { flex: 1; min-height: 0; margin-top: 3vh; display: flex; flex-direction: column; justify-content: center; gap: 2vh; }
+  .arch .layer-label { font-family: var(--mono); font-size: clamp(11px, 0.9vw, 15px); color: var(--teal); letter-spacing: 0.08em; margin-bottom: 0.8vh; }
+  .arch .box { border: 1px solid var(--ink); background: var(--paper); padding: 1.6vh 2vw; text-align: center; }
+  .arch .box b { font-size: clamp(17px, 1.5vw, 26px); font-weight: 700; }
+  .arch .box span { font-family: var(--mono); font-size: clamp(11px, 0.95vw, 16px); color: var(--ink-2); display: block; margin-top: 4px; }
+  .arch .connector { width: 1px; height: 2.2vh; background: var(--ink); margin: 0 auto; }
+  .arch .row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--hairline); border: 1px solid var(--hairline); }
+  .arch .row .box { border: none; }
+  .arch .row .box i { font-family: var(--mono); font-style: normal; font-size: clamp(10px, 0.85vw, 14px); color: var(--teal); display: block; margin-bottom: 4px; }
+  /* 紧凑分层（五层架构页） */
+  .arch.compact { gap: 0.8vh; margin-top: 2vh; }
+  .arch.compact .box { padding: 0.7vh 2vw; }
+  .arch.compact .box b { font-size: clamp(16px, 1.4vw, 24px); }
+  .arch.compact .connector { height: 1vh; }
+  .arch.compact .layer-label { margin-bottom: 0.4vh; }
+
+  /* ---------- 参数注解条 ---------- */
+  .notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(12px, 1.2vw, 24px); margin-top: 2vh; }
+  .notes .note { border-top: 1px solid var(--hairline); padding-top: 1.2vh; }
+  .notes .note b { display: block; font-family: var(--mono); font-size: clamp(13px, 1.05vw, 19px); color: var(--teal); margin-bottom: 0.6vh; font-weight: 600; }
+  .notes .note p { font-size: clamp(13px, 1.05vw, 19px); color: var(--ink-2); line-height: 1.55; }
+
+  /* ---------- 支持格式芯片（MarkItDown 页） ---------- */
+  .fmt-chips {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
+    background: var(--hairline); border: 1px solid var(--hairline);
+    margin-top: 2.5vh;
+  }
+  .fmt-chip { background: var(--paper-deep); padding: 1.8vh 12px; text-align: center; }
+  .fmt-chip b { display: block; font-size: clamp(16px, 1.3vw, 23px); font-weight: 700; }
+  .fmt-chip span { display: block; margin-top: 6px; font-family: var(--mono); font-size: clamp(10px, 0.85vw, 14px); color: var(--teal); }
+
+  /* ---------- 双列代码（Token 控制页） ---------- */
+  .code-cols { display: grid; grid-template-columns: 1.25fr 1fr; gap: clamp(16px, 1.5vw, 28px); margin-top: 2.5vh; flex: 1; min-height: 0; }
+  .code-cols .col-c { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .code-cols .code-block { margin-top: 1.4vh; flex: 1; }
+  .code-label { font-family: var(--mono); font-size: clamp(12px, 1vw, 17px); color: var(--teal); letter-spacing: 0.06em; }
+
+  /* ---------- 对比行（HyDE 页） ---------- */
+  .vs-row { display: flex; align-items: center; gap: 1.5vw; margin-top: 2vh; }
+  .vs-row .flow { flex: 1; margin-top: 0; }
+  .vs-label { font-family: var(--sans); font-size: clamp(13px, 1.05vw, 19px); font-weight: 500; letter-spacing: 0.08em; color: var(--teal); min-width: 5em; }
+  .vs-tag { font-family: var(--mono); font-size: clamp(11px, 0.9vw, 15px); color: var(--ink-2); min-width: 10em; text-align: right; }
+
+  /* ---------- 收尾 ---------- */
+  .s-closing { justify-content: center; text-align: center; align-items: center; }
+  .s-closing blockquote { font-size: clamp(30px, 3vw, 56px); font-weight: 600; line-height: 1.6; margin-top: 4vh; }
+
+  /* ---------- 翻页控件 ---------- */
+  #nav {
+    position: fixed; bottom: 24px; right: 32px; z-index: 10;
+    display: flex; gap: 12px; align-items: center;
+  }
+  #counter {
+    font-family: var(--mono); font-size: 15px; color: var(--ink-2);
+    min-width: 72px; text-align: center;
+  }
+  #nav button {
+    width: 52px; height: 52px;
+    border: 1px solid var(--ink-2); background: transparent;
+    cursor: pointer; transition: background 0.2s, border-color 0.2s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #nav button:hover { background: var(--teal); border-color: var(--teal); }
+  .arrow { width: 0; height: 0; border-top: 8px solid transparent; border-bottom: 8px solid transparent; }
+  .arrow.prev { border-right: 13px solid var(--ink); }
+  .arrow.next { border-left: 13px solid var(--ink); }
+  #nav button:hover .arrow.prev { border-right-color: var(--paper); }
+  #nav button:hover .arrow.next { border-left-color: var(--paper); }
+
+  /* ---------- 入场动效（克制 · 编辑排版风，仅 .active 页触发） ---------- */
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pop { from { opacity: 0; } to { opacity: 1; } }
+
+  /* 页眉序列：kicker → 标题 → 副题 */
+  .slide.active .kicker { animation: pop .45s .05s both; }
+  .slide.active h1 { animation: rise .6s .12s both; }
+  .slide.active .dek { animation: rise .55s .3s both; }
+  .slide.active .speaker { animation: pop .5s .55s both; }
+  .slide.active h2, .slide.active .detail-head { animation: rise .55s .12s both; }
+  .slide.active .sub { animation: rise .5s .22s both; }
+
+  /* 主体容器入场 */
+  .slide.active .stages, .slide.active .memory-grid, .slide.active .detail-cols,
+  .slide.active .cogmap, .slide.active .pf, .slide.active .arch, .slide.active .flow,
+  .slide.active .code-cols, .slide.active .code-block, .slide.active .notes,
+  .slide.active .vs-row, .slide.active .fmt-chips, .slide.active .wf-lanes,
+  .slide.active blockquote { animation: rise .55s .3s both; }
+
+  /* 步进呈现：→ 键逐个点亮，全部亮起后再 → 才翻页；连接线不单独成步，随后续内容一起亮
+     （仅 body.stepping 时生效——无 JS 或打印时所有内容恒可见） */
+  body.stepping .slide .stages .stage, body.stepping .slide .memory-cell,
+  body.stepping .slide .detail-cols .col, body.stepping .slide .pf > *,
+  body.stepping .slide .wf-lane, body.stepping .slide .arch > * {
+    transition: opacity .45s ease, transform .45s ease;
+  }
+  body.stepping .slide .stages .stage:not(.on), body.stepping .slide .memory-cell:not(.on),
+  body.stepping .slide .detail-cols .col:not(.on), body.stepping .slide .pf > *:not(.on),
+  body.stepping .slide .wf-lane:not(.on), body.stepping .slide .arch > *:not(.on) {
+    opacity: 0; transform: translateY(14px);
+  }
+
+  /* 底部锚点与页码最后落定 */
+  .slide.active .formula, .slide.active .expand-bar { animation: pop .6s .7s both; }
+  .slide.active .pagenum { animation: pop .5s .6s both; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .slide.active, .slide.active * { animation: none !important; transition: none !important; }
+  }
+
+  /* ---------- 打印 / 导出 PDF（放在样式表末尾，避免被后续规则覆盖） ---------- */
+  @page { size: 406.4mm 228.6mm; margin: 0; }
+  @media print {
+    body { overflow: visible; }
+    #stage { position: static; }
+    .slide {
+      position: relative; inset: auto;
+      display: flex !important; animation: none;
+      width: 100vw; height: 100vh;
+      page-break-after: always; break-after: page;
+      overflow: hidden;
+    }
+    .slide:last-of-type { page-break-after: auto; break-after: auto; }
+    .slide, .slide * { animation: none !important; opacity: 1 !important; transform: none !important; }
+    #nav, .modal, .code-btn { display: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+
+  <!-- 01 封面 -->
+  <section class="slide s-title active" data-screen-label="01 Title">
+    <span class="kicker">HELLOAGENTS · 第八章 记忆与检索 · 8.3</span>
+    <h1>RAG系统：<br>知识检索增强</h1>
+    <p class="dek">生成之前，先检索 —— <em>检索、增强、生成。</em></p>
+    <p class="speaker">主讲人：柠檬酸</p>
+    <span class="pagenum">01</span>
+  </section>
+
+  <!-- 02 什么是 RAG -->
+  <section class="slide" data-screen-label="02 什么是RAG">
+    <span class="kicker">8.3.1 · RAG 的基础知识 · 什么是 RAG</span>
+    <h2>什么是 RAG</h2>
+    <p class="sub">检索增强生成（Retrieval-Augmented Generation）—— 一种结合了信息检索和文本生成的技术</p>
+    <div class="detail-cols">
+      <div class="col"><span class="lbl">RETRIEVAL · 检索</span><p>从知识库中查询相关内容——生成回答之前，先从外部知识库检索相关信息</p><div class="mech">外部知识库 · 为模型提供事实依据</div></div>
+      <div class="col"><span class="lbl">AUGMENTED · 增强</span><p>将检索到的信息作为上下文融入提示词，提供给大语言模型，辅助模型生成</p><div class="mech">检索结果 · 注入 Prompt</div></div>
+      <div class="col"><span class="lbl">GENERATION · 生成</span><p>基于增强后的上下文作答，输出兼具准确性与透明度的答案</p><div class="mech">更准确 · 更可靠的回答</div></div>
+    </div>
+    <div class="formula">RAG = 检索 Retrieval ＋ 增强 Augmented ＋ 生成 Generation</div>
+    <span class="pagenum">02</span>
+  </section>
+
+  <!-- 03 基本工作流程 -->
+  <section class="slide" data-screen-label="03 基本工作流程">
+    <span class="kicker">8.3.1 · RAG 的基础知识 · 基本工作流程</span>
+    <h2>基本工作流程：两大核心环节</h2>
+    <p class="sub">数据准备阶段构建可检索的数据库，应用阶段响应提问、生成答案</p>
+    <div class="pf">
+      <div class="pf-phase">
+        <span class="cog-label">数据准备阶段 · DATA PREPARATION</span>
+        <div class="cog-row">
+          <div class="cog-node"><b>数据提取</b><span>EXTRACT</span></div>
+          <div class="cog-edge"><span class="line"></span></div>
+          <div class="cog-node"><b>文本分割</b><span>SPLIT</span></div>
+          <div class="cog-edge"><span class="line"></span></div>
+          <div class="cog-node"><b>向量化</b><span>VECTORIZE</span></div>
+        </div>
+      </div>
+      <div class="pf-mid">
+        <div class="wf-down"></div>
+        <div class="cog-node hub"><b>可检索数据库</b><span>RETRIEVABLE DATABASE</span></div>
+        <div class="wf-down"></div>
+      </div>
+      <div class="pf-phase">
+        <span class="cog-label">应用阶段 · APPLICATION</span>
+        <div class="cog-row">
+          <div class="cog-node"><b>用户提问</b><span>QUERY</span></div>
+          <div class="cog-edge"><span class="line"></span></div>
+          <div class="cog-node"><b>检索</b><span>RETRIEVE</span></div>
+          <div class="cog-edge"><span class="line"></span></div>
+          <div class="cog-node"><b>注入 Prompt</b><span>AUGMENT</span></div>
+          <div class="cog-edge"><span class="line"></span></div>
+          <div class="cog-node"><b>生成答案</b><span>GENERATE</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="formula">数据准备：提取 → 分割 → 向量化 ｜ 应用：提问 → 检索 → 注入 Prompt → 生成答案</div>
+    <span class="pagenum">03</span>
+  </section>
+
+  <!-- 04 发展历程 -->
+  <section class="slide" data-screen-label="04 发展历程">
+    <span class="kicker">8.3.1 · RAG 的基础知识 · 发展历程</span>
+    <h2>发展历程：三个阶段</h2>
+    <p class="sub">从「检索-读取」模式，到模块化、自动化和智能化</p>
+    <div class="stages tall" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="stage"><span class="n">2020 – 2021 · NAIVE RAG</span><h3>朴素 RAG</h3><p>技术的萌芽阶段，流程直接而简单，被称为「检索-读取」（Retrieve-Read）模式：计算词频与文档频率评估相关性，字面匹配效果好，但难以理解语义上的相似性</p><div class="map">检索 TF-IDF / BM25 关键词匹配<br>生成 文档直接拼接进提示词上下文</div></div>
+      <div class="stage"><span class="n">2022 – 2023 · ADVANCED RAG</span><h3>高级 RAG</h3><p>向量数据库和文本嵌入技术成熟，在「检索」和「生成」的各个环节引入大量优化技术：文本转为高维向量后，模型能够理解和匹配语义上的相似性</p><div class="map">检索 稠密嵌入 Dense Embedding 语义检索<br>生成 查询重写 · 文档分块 · 重排序</div></div>
+      <div class="stage"><span class="n">2023 – 至今 · MODULAR RAG</span><h3>模块化 RAG</h3><p>系统的各个部分被设计成可插拔、可组合的独立模块，向着模块化、自动化和智能化的方向发展，适应更多样化和复杂的应用场景</p><div class="map">检索 混合检索 · 多查询扩展 · 假设性文档嵌入<br>生成 思维链推理 · 自我反思与修正</div></div>
+    </div>
+    <span class="pagenum">04</span>
+  </section>
+
+  <!-- 05 图 8.5 工作原理 -->
+  <section class="slide" data-screen-label="05 图8.5 工作原理">
+    <span class="kicker">8.3.2 · 图 8.5 · RAG 系统工作原理</span>
+    <h2>RAG 系统的两个主要工作模式</h2>
+    <div class="wf">
+      <div class="wf-lanes" style="grid-template-columns: 1fr 1fr;">
+        <div class="wf-lane">
+          <span class="cog-label">数据处理流程 · 处理和存储知识文档</span>
+          <div class="wf-node"><b>外部知识源</b><span>PDF · WORD · EXCEL · 图片 · 音频</span></div>
+          <div class="wf-down"></div>
+          <div class="wf-node code"><b>MarkItDown 统一转换</b></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>Markdown 文本</b><span>统一结构化格式</span></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>智能分块 · 向量化</b><span>结构感知分块 + 嵌入模型</span></div>
+          <div class="wf-down"></div>
+          <div class="wf-node hub"><b>知识库</b><span>向量数据库</span></div>
+        </div>
+        <div class="wf-lane">
+          <span class="cog-label">查询与生成流程 · 检索并生成回答</span>
+          <div class="wf-node"><b>用户查询</b><span>自然语言提问</span></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>检索相关信息</b><span>向量相似度 · Top-K</span></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>注入 Prompt</b><span>检索结果作为上下文</span></div>
+          <div class="wf-down"></div>
+          <div class="wf-node"><b>LLM 生成回答</b><span>更准确 · 更可靠</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="formula">设计思路：将传入的一切外部知识源，统一转化为 Markdown 格式进行处理</div>
+    <span class="pagenum">05</span>
+  </section>
+
+  <!-- 06 快速体验（8.3.3） -->
+  <section class="slide" data-screen-label="06 快速体验">
+    <span class="kicker">8.3.3 · 30 秒上手</span>
+    <h2>快速体验 RAG 功能</h2>
+    <p class="sub">先跑起来，再深入原理</p>
+    <div class="code-block" style="font-size: clamp(11px, 0.98vw, 18px);"><span class="cm"># 创建 LLM 与 RAG 工具（知识库路径 / 集合名 / 命名空间）</span>
+llm = HelloAgentsLLM()
+rag_tool = <span class="hl">RAGTool</span>(knowledge_base_path="./knowledge_base",
+                 collection_name="test_collection", rag_namespace="test")
+<span class="cm"># 注册工具，创建具有 RAG 能力的 Agent</span>
+tool_registry = ToolRegistry()
+tool_registry.register_tool(rag_tool)
+agent = SimpleAgent(name="知识助手", llm=llm, tool_registry=tool_registry)
+<span class="cm"># 添加知识：文本内容 + 文档 ID</span>
+rag_tool.execute(<span class="hl">"add_text"</span>, text="Python是一种高级编程语言……", document_id=<span class="hl">"python_intro"</span>)
+<span class="cm"># 检索知识 / 查看知识库统计</span>
+rag_tool.execute(<span class="hl">"search"</span>, query="Python编程语言的历史", limit=3, min_score=<span class="hl">0.1</span>)
+rag_tool.execute(<span class="hl">"stats"</span>)</div>
+    <div class="notes">
+      <div class="note"><b>add_text</b><p>添加知识：传入文本内容，document_id 标记文档身份</p></div>
+      <div class="note"><b>search</b><p>检索知识：limit 控制返回条数，min_score 过滤低分结果</p></div>
+      <div class="note"><b>stats</b><p>知识库统计：查看当前知识库的规模与状态</p></div>
+    </div>
+    <button class="code-btn" data-modal="m-quick">查看完整代码 ↗</button>
+    <span class="pagenum">06</span>
+  </section>
+
+  <!-- 07 五层架构（8.3.4） -->
+  <section class="slide" data-screen-label="07 五层架构">
+    <span class="kicker">8.3.4 · 系统架构设计 · 五层七步</span>
+    <h2>「五层七步」的分层设计</h2>
+    <p class="sub">每一层都可以独立优化和替换，同时保持整体系统的稳定性</p>
+    <div class="arch compact">
+      <div>
+        <div class="layer-label">用户层</div>
+        <div class="box"><b>RAGTool 统一接口</b><span>execute 分发 · add_text / search / stats</span></div>
+      </div>
+      <div class="connector"></div>
+      <div>
+        <div class="layer-label">应用层</div>
+        <div class="box"><b>智能问答 · 搜索 · 管理</b><span>面向业务的功能组合</span></div>
+      </div>
+      <div class="connector"></div>
+      <div>
+        <div class="layer-label">处理层</div>
+        <div class="box"><b>文档解析 · 分块 · 向量化</b><span>MarkItDown · 结构感知分块 · 统一嵌入</span></div>
+      </div>
+      <div class="connector"></div>
+      <div>
+        <div class="layer-label">存储层</div>
+        <div class="box"><b>向量数据库 · 文档存储</b><span>Qdrant · 命名空间隔离</span></div>
+      </div>
+      <div class="connector"></div>
+      <div>
+        <div class="layer-label">基础层</div>
+        <div class="box"><b>嵌入模型 · LLM · 数据库</b><span>百炼 API / sentence-transformers · HelloAgentsLLM</span></div>
+      </div>
+    </div>
+    <div class="formula" style="border: none;">可插拔：嵌入模型从 sentence-transformers 切换到百炼 API，上层业务逻辑零改动</div>
+    <span class="pagenum">07</span>
+  </section>
+
+  <!-- 08 RAGTool 统一接口 -->
+  <section class="slide" data-screen-label="08 RAGTool 统一接口">
+    <span class="kicker">8.3.4 · RAGTool 统一接口</span>
+    <h2>RAGTool：RAG 系统的统一入口</h2>
+    <p class="sub">完整的 RAG 能力：多格式文档添加 · 智能检索召回 · LLM 增强问答 · 知识库管理</p>
+    <div class="code-block" style="font-size: clamp(10px, 0.85vw, 15px);"><span class="hl">class RAGTool(Tool):</span>
+    <span class="cm">"""RAG工具：多格式文档添加 / 智能检索召回 / LLM增强问答 / 知识库管理"""</span>
+    <span class="hl">def __init__</span>(self,
+        knowledge_base_path: str = <span class="hl">"./knowledge_base"</span>,  <span class="cm"># 知识库存储路径</span>
+        qdrant_url: str = None,                  <span class="cm"># 向量数据库连接</span>
+        collection_name: str = "rag_knowledge_base",
+        rag_namespace: str = "default"):         <span class="cm"># 命名空间：多知识库隔离</span>
+        self._pipelines = {}          <span class="cm"># 命名空间 → RAG 管道</span>
+        self.llm = HelloAgentsLLM()   <span class="cm"># 增强问答所需的 LLM</span>
+        <span class="cm"># 创建默认管道：每个命名空间对应一条独立的 RAG pipeline</span>
+        default_pipeline = <span class="hl">create_rag_pipeline</span>(
+            qdrant_url=self.qdrant_url, collection_name=self.collection_name,
+            rag_namespace=self.rag_namespace)
+        self._pipelines[self.rag_namespace] = default_pipeline</div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：RAGTool 类定义与默认管道初始化</span>
+      <button class="code-btn" data-modal="m-ragtool">查看完整代码 ↗</button>
+    </div>
+    <div class="flow compact">
+      <div class="node"><b>任意格式文档</b></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>MarkItDown 转换</b></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>Markdown 文本</b></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>智能分块</b></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>向量化</b></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>存储检索</b></div>
+    </div>
+    <span class="pagenum">08</span>
+  </section>
+
+  <!-- 09 多模态文档载入 -->
+  <section class="slide" data-screen-label="09 多模态文档载入">
+    <span class="kicker">8.3.4 · 步骤 1/3 · 多模态文档载入</span>
+    <h2>MarkItDown：统一文档转换引擎</h2>
+    <p class="sub">微软开源的通用文档转换工具——无论输入是什么格式，最终都转换为标准的 Markdown 文本</p>
+    <div class="fmt-chips">
+      <div class="fmt-chip"><b>文档</b><span>PDF · Word · Excel · PPT</span></div>
+      <div class="fmt-chip"><b>图像</b><span>JPG · PNG · GIF（OCR）</span></div>
+      <div class="fmt-chip"><b>音频</b><span>MP3 · WAV · M4A（转录）</span></div>
+      <div class="fmt-chip"><b>文本</b><span>TXT · CSV · JSON · XML · HTML</span></div>
+      <div class="fmt-chip"><b>代码</b><span>Python · JavaScript · Java 等</span></div>
+    </div>
+    <div class="code-block" style="font-size: clamp(10px, 0.85vw, 15px);"><span class="hl">def _convert_to_markdown(path: str) -> str:</span>
+    <span class="cm">"""核心功能：将任意格式文档转换为 Markdown 文本"""</span>
+    if not os.path.exists(path):
+        return ""
+    ext = (os.path.splitext(path)[1] or '').lower()
+    if ext == <span class="hl">'.pdf'</span>:
+        return <span class="hl">_enhanced_pdf_processing</span>(path)    <span class="cm"># PDF 走增强处理</span>
+    md_instance = _get_markitdown_instance()       <span class="cm"># 其他格式：MarkItDown 统一转换</span>
+    if md_instance is None:
+        return <span class="hl">_fallback_text_reader</span>(path)         <span class="cm"># 兜底：纯文本读取器</span>
+    result = md_instance.convert(path)
+    markdown_text = getattr(result, "text_content", None)
+    if isinstance(markdown_text, str) and markdown_text.strip():
+        return markdown_text                       <span class="cm"># 转换成功，返回 Markdown</span>
+    return ""</div>
+    <button class="code-btn" data-modal="m-markitdown">查看完整代码 ↗</button>
+    <span class="pagenum">09</span>
+  </section>
+
+  <!-- 10 智能分块 · 结构感知 -->
+  <section class="slide" data-screen-label="10 智能分块 结构感知">
+    <span class="kicker">8.3.4 · 步骤 2/3 · 智能分块 · 结构感知</span>
+    <h2>结构感知：按标题层次分割段落</h2>
+    <div class="flow compact">
+      <div class="node"><b>标准 Markdown</b><span>统一格式</span></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>标题层次解析</b><span># / ## / ###</span></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>段落语义分割</b><span>语义边界</span></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>Token 计算分块</b><span>大小控制</span></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>重叠策略优化</b><span>上下文保持</span></div>
+      <div class="edge"><span class="line"></span></div>
+      <div class="node"><b>向量化准备</b><span>相似度匹配</span></div>
+    </div>
+    <div class="code-block" style="font-size: clamp(10px, 0.85vw, 15px); padding-top: 2vh; padding-bottom: 2vh;"><span class="hl">def _split_paragraphs_with_headings(text: str) -> List[Dict]:</span>
+    <span class="cm">"""根据标题层次分割段落，保持语义完整性"""</span>
+    heading_stack, paragraphs, buf = [], [], []
+    def flush_buf(end_pos):                 <span class="cm"># 将缓冲区落为一个段落</span>
+        content = "\n".join(buf).strip()
+        if content: paragraphs.append({ "content": content,
+            "heading_path": " > ".join(heading_stack) or None,   <span class="cm"># 记录标题路径</span>
+            "start": ..., "end": end_pos })
+    for raw in text.splitlines():
+        if raw.strip().startswith(<span class="hl">"#"</span>):          <span class="cm"># 标题行：落盘并维护标题栈</span>
+            flush_buf(...)
+            level = len(raw) - len(raw.lstrip('#'))
+            heading_stack = heading_stack[:<span class="hl">level</span>-1] + [raw.lstrip('#').strip()]
+        elif raw.strip() == "":                  <span class="cm"># 空行 = 段落边界</span>
+            flush_buf(...); buf = []
+        else: buf.append(raw)                    <span class="cm"># 普通行：继续累积</span>
+    return paragraphs</div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：_split_paragraphs_with_headings（标题栈维护 / 段落落盘 / 字符位置记录）</span>
+      <button class="code-btn" data-modal="m-split">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">10</span>
+  </section>
+
+  <!-- 11 智能分块 · Token 控制 -->
+  <section class="slide" data-screen-label="11 智能分块 Token 控制">
+    <span class="kicker">8.3.4 · 步骤 2/3 · 智能分块 · Token 控制</span>
+    <h2>Token 计算分块与中英文估算</h2>
+    <div class="code-cols">
+      <div class="col-c">
+        <span class="code-label">① _chunk_paragraphs · 基于 Token 数量的智能分块</span>
+        <div class="code-block" style="font-size: clamp(10px, 0.8vw, 14px);"><span class="hl">def _chunk_paragraphs(paragraphs, chunk_tokens, overlap_tokens):</span>
+    <span class="cm">"""基于 Token 数量的智能分块"""</span>
+    chunks, cur, cur_tokens, i = [], [], 0, 0
+    while i &lt; len(paragraphs):
+        p_tokens = _approx_token_len(paragraphs[i]["content"]) or 1
+        if cur_tokens + p_tokens &lt;= <span class="hl">chunk_tokens</span> or not cur:
+            cur.append(paragraphs[i]); cur_tokens += p_tokens; i += 1  <span class="cm"># 装得下：累积</span>
+            continue
+        <span class="cm"># 超预算：产出当前分块（取最近段落的标题路径）</span>
+        chunks.append({ "content": "\n\n".join(x["content"] for x in cur),
+            "start": cur[0]["start"], "end": cur[-1]["end"],
+            "heading_path": next((x["heading_path"] for x in reversed(cur)
+                                  if x.get("heading_path")), None) })
+        kept, kept_tokens = [], 0          <span class="cm"># 重叠：从尾部回留若干段落</span>
+        for x in reversed(cur):
+            t = _approx_token_len(x["content"]) or 1
+            if kept_tokens + t > <span class="hl">overlap_tokens</span>: break
+            kept.append(x); kept_tokens += t
+        cur, cur_tokens = list(reversed(kept)), kept_tokens
+    return chunks                            <span class="cm"># 循环后补收最后一个分块</span></div>
+      </div>
+      <div class="col-c">
+        <span class="code-label">② _approx_token_len · 中英文混合 Token 估算</span>
+        <div class="code-block" style="font-size: clamp(10px, 0.8vw, 14px);"><span class="hl">def _approx_token_len(text: str) -> int:</span>
+    <span class="cm">"""近似估计 Token 长度，支持中英文混合"""</span>
+    cjk = sum(1 for ch in text if _is_cjk(ch))    <span class="cm"># CJK 按 1 token 计</span>
+    non_cjk = len([t for t in text.split() if t]) <span class="cm"># 其余按空白分词</span>
+    return cjk + non_cjk
+
+<span class="hl">def _is_cjk(ch: str) -> bool:</span>
+    <span class="cm">"""判断是否为 CJK 字符（查 Unicode 码位区间）"""</span>
+    code = ord(ch)
+    return (<span class="hl">0x4E00</span> &lt;= code &lt;= <span class="hl">0x9FFF</span> or   <span class="cm"># CJK 统一汉字</span>
+            0x3400 &lt;= code &lt;= 0x4DBF or   <span class="cm"># CJK 扩展 A</span>
+            0x20000 &lt;= code &lt;= 0x2A6DF or <span class="cm"># CJK 扩展 B</span>
+            0xF900 &lt;= code &lt;= 0xFAFF)     <span class="cm"># CJK 兼容汉字</span></div>
+        <div class="notes" style="grid-template-columns: 1fr; margin-top: 1.6vh;">
+          <div class="note"><b>CJK = Chinese · Japanese · Korean</b><p>中日韩统一表意文字，核心为汉字，在 Unicode 中占专门码位区间。汉字无空格，逐字按 1 token 计；英文按空白分词计数——两段相加即为混合文本的近似 token 长度，分块大小才控得准。</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：_chunk_paragraphs 分块主循环（含末块补收）+ 七段 CJK 码位表</span>
+      <button class="code-btn" data-modal="m-chunk">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">11</span>
+  </section>
+
+  <!-- 12 统一嵌入与向量存储 -->
+  <section class="slide" data-screen-label="12 统一嵌入与向量存储">
+    <span class="kicker">8.3.4 · 步骤 3/3 · 统一嵌入与向量存储</span>
+    <h2>统一嵌入接口与向量存储</h2>
+    <div class="flow compact">
+      <div class="node"><b>百炼 API</b><span>首选 · 演示默认</span></div>
+      <div class="edge"><span class="cond">尚未配置时回退</span><span class="line"></span></div>
+      <div class="node"><b>all-MiniLM-L6-v2</b><span>本地 sentence-transformers</span></div>
+      <div class="edge"><span class="cond">两者都不可用时</span><span class="line"></span></div>
+      <div class="node"><b>TF-IDF</b><span>词频算法兜底</span></div>
+    </div>
+    <div class="code-block" style="font-size: clamp(10px, 0.85vw, 15px);"><span class="hl">def index_chunks(store=None, chunks=None, batch_size=64, rag_namespace="default"):</span>
+    <span class="cm">"""统一嵌入 + Qdrant 存储：百炼 API，回退 sentence-transformers"""</span>
+    if not chunks: return
+    embedder = <span class="hl">get_text_embedder()</span>       <span class="cm"># 统一嵌入器（内部处理缓存）</span>
+    dimension = get_dimension(<span class="hl">384</span>)
+    if store is None:                     <span class="cm"># 默认创建 Qdrant 向量库</span>
+        store = _create_default_vector_store(dimension)
+    <span class="cm"># 预处理 Markdown 文本，获得更好的嵌入质量</span>
+    processed = [_preprocess_markdown_for_embedding(c["content"]) for c in chunks]
+    vecs = []
+    for i in range(0, len(processed), <span class="hl">batch_size</span>):   <span class="cm"># 批量编码</span>
+        part_vecs = embedder.encode(processed[i:i+batch_size])
+        for v in part_vecs:
+            v_norm = [float(x) for x in v]
+            if len(v_norm) != dimension:          <span class="cm"># 维度对齐：补零 / 截断</span>
+                v_norm = (v_norm + [0.0] * dimension)[:dimension]
+            vecs.append(v_norm)</div>
+    <button class="code-btn" data-modal="m-index">查看完整代码 ↗</button>
+    <span class="pagenum">12</span>
+  </section>
+
+  <!-- 13 高级检索策略总览 -->
+  <section class="slide" data-screen-label="13 高级检索策略总览">
+    <span class="kicker">8.3.5 · 高级检索策略 · 总览</span>
+    <h2>三种互补的高级检索策略</h2>
+    <p class="sub">用户的查询表述与文档中的实际内容可能存在用词差异，导致相关文档无法被检索到</p>
+    <div class="stages tall" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="stage"><span class="n">STRATEGY 1 · MQE</span><h3>多查询扩展</h3><p>用 LLM 生成语义等价的多样化查询，并行执行这些扩展查询并合并结果，覆盖更广泛的相关文档</p><div class="map">解决：用词多样性<br>对模糊查询 / 专业术语查询效果显著</div></div>
+      <div class="stage"><span class="n">STRATEGY 2 · HYDE</span><h3>假设文档嵌入</h3><p>让 LLM 先生成一个假设性的答案段落，再用这个答案段落去检索真实文档——「用答案找答案」</p><div class="map">解决：语义鸿沟<br>假设答案与真实答案语义更接近</div></div>
+      <div class="stage"><span class="n">STRATEGY 3 · FRAMEWORK</span><h3>统一扩展检索框架</h3><p>将 MQE 和 HyDE 整合到统一框架中，通过 enable_mqe / enable_hyde 参数按场景选择启用</p><div class="map">扩展 → 检索 → 合并 三步流程<br>candidate_pool_multiplier = 4 扩大候选池</div></div>
+    </div>
+    <span class="pagenum">13</span>
+  </section>
+
+  <!-- 14 MQE -->
+  <section class="slide" data-screen-label="14 MQE 多查询扩展">
+    <span class="kicker">8.3.5 · 高级检索策略 1/3 · 多查询扩展</span>
+    <h2>MQE：一个问题的多种表述</h2>
+    <p class="sub">同一个问题可以有多种不同的表述方式，而不同的表述可能匹配到不同的相关文档</p>
+    <div class="formula" style="padding: 1.6vh 0; margin-top: 2vh;">「如何学习Python」 ⇒ 「Python入门教程」·「Python学习方法」·「Python编程指南」</div>
+    <div class="code-block" style="font-size: clamp(10px, 0.85vw, 15px); padding-top: 2.2vh; padding-bottom: 2.2vh;"><span class="hl">def _prompt_mqe(query: str, n: int) -> List[str]:</span>
+    <span class="cm">"""使用 LLM 生成多样化的查询扩展"""</span>
+    try:
+        from ...core.llm import HelloAgentsLLM
+        llm = HelloAgentsLLM()
+        prompt = [
+            {"role": "system", "content": "你是检索查询扩展助手。生成语义等价或互补的多样化查询。使用中文，简短，避免标点。"},
+            {"role": "user", "content": f"原始查询：{query}\n请给出<span class="hl">{n}</span>个不同表述的查询，每行一个。"}
+        ]
+        text = llm.invoke(prompt)       <span class="cm"># 调用 LLM 生成扩展</span>
+        lines = [ln.strip("- \t") for ln in (text or "").splitlines()]
+        outs = [ln for ln in lines if ln]
+        return <span class="hl">outs[:n]</span> or [query]     <span class="cm"># 取前 n 个；解析为空时退回原查询</span>
+    except Exception:
+        return [query]                  <span class="cm"># 异常兜底：至少保留原查询</span></div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：_prompt_mqe（LLM 生成扩展查询 + 逐行解析 + 异常兜底）</span>
+      <button class="code-btn" data-modal="m-mqe">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">14</span>
+  </section>
+
+  <!-- 15 HyDE -->
+  <section class="slide" data-screen-label="15 HyDE 假设文档嵌入">
+    <span class="kicker">8.3.5 · 高级检索策略 2/3 · 假设文档嵌入</span>
+    <h2>HyDE：用答案找答案</h2>
+    <p class="sub">问题通常是疑问句，而文档内容是陈述句——问题和答案在语义空间中的分布往往存在差异</p>
+    <div class="vs-row">
+      <span class="vs-label">传统检索</span>
+      <div class="flow compact">
+        <div class="node"><b>问题</b><span>疑问句</span></div>
+        <div class="edge"><span class="line"></span></div>
+        <div class="node"><b>直接匹配</b></div>
+        <div class="edge"><span class="line"></span></div>
+        <div class="node"><b>文档</b><span>陈述句</span></div>
+      </div>
+      <span class="vs-tag">语义分布存在差异</span>
+    </div>
+    <div class="vs-row">
+      <span class="vs-label">HyDE</span>
+      <div class="flow compact">
+        <div class="node"><b>问题</b></div>
+        <div class="edge"><span class="line"></span></div>
+        <div class="node"><b>LLM 生成假设答案</b></div>
+        <div class="edge"><span class="line"></span></div>
+        <div class="node"><b>用答案段落检索</b></div>
+        <div class="edge"><span class="line"></span></div>
+        <div class="node"><b>真实文档</b></div>
+      </div>
+      <span class="vs-tag">语义空间中更接近</span>
+    </div>
+    <div class="code-block" style="font-size: clamp(10px, 0.85vw, 15px); padding-top: 2.2vh; padding-bottom: 2.2vh;"><span class="hl">def _prompt_hyde(query: str) -> Optional[str]:</span>
+    <span class="cm">"""生成假设性文档用于改善检索"""</span>
+    try:
+        from ...core.llm import HelloAgentsLLM
+        llm = HelloAgentsLLM()
+        prompt = [
+            {"role": "system", "content": "根据用户问题，先写一段可能的答案性段落，用于向量检索的查询文档（不要分析过程）。"},
+            {"role": "user", "content": f"问题：{query}\n请直接写一段中等长度、客观、包含关键术语的段落。"}
+        ]
+        return llm.invoke(prompt)   <span class="cm"># 假设答案即使不完全正确，关键术语也能引导检索</span>
+    except Exception:
+        return None</div>
+    <div class="expand-bar">
+      <span class="lbl">完整实现：_prompt_hyde（假设性文档生成 · 专业领域查询效果显著）</span>
+      <button class="code-btn" data-modal="m-hyde">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">15</span>
+  </section>
+
+  <!-- 16 扩展检索框架 -->
+  <section class="slide" data-screen-label="16 扩展检索框架">
+    <span class="kicker">8.3.5 · 高级检索策略 3/3 · 扩展检索框架</span>
+    <h2>统一框架：扩展 - 检索 - 合并</h2>
+    <div class="flow compact">
+      <div class="node"><b>① 扩展</b><span>原查询 + MQE + HyDE</span></div>
+      <div class="edge"><span class="cond">每个扩展查询并行检索</span><span class="line"></span></div>
+      <div class="node"><b>② 检索</b><span>候选池 = top_k × 4</span></div>
+      <div class="edge"><span class="cond">去重 + 分数排序</span><span class="line"></span></div>
+      <div class="node"><b>③ 合并</b><span>返回 Top-K</span></div>
+    </div>
+    <div class="code-block" style="font-size: clamp(10px, 0.8vw, 14px); padding-top: 2vh; padding-bottom: 2vh;"><span class="hl">def search_vectors_expanded(store=None, query="", top_k=8, enable_mqe=False,</span>
+        mqe_expansions=2, enable_hyde=False, <span class="hl">candidate_pool_multiplier=4</span>, ...):
+    <span class="cm">"""扩展-检索-合并：统一查询扩展检索"""</span>
+    if not query: return []
+    expansions = [query]                            <span class="cm"># ① 扩展：原查询 + MQE + HyDE</span>
+    if enable_mqe and mqe_expansions > 0: expansions.extend(<span class="hl">_prompt_mqe</span>(query, mqe_expansions))
+    if enable_hyde and (t := <span class="hl">_prompt_hyde</span>(query)): expansions.append(t)
+    expansions = list(dict.fromkeys(expansions))    <span class="cm"># 去重保序</span>
+    pool = max(top_k * <span class="hl">candidate_pool_multiplier</span>, 20)   <span class="cm"># ② 候选池 ×4 扩大</span>
+    per = max(1, pool // max(1, len(expansions)))       <span class="cm"># 每个扩展查询的检索额度</span>
+    agg = {}                                        <span class="cm"># ③ 合并：按文档 ID 去重留高分</span>
+    for q in expansions:
+        hits = store.search_similar(query_vector=embed_query(q), limit=per, ...)
+        for h in hits:
+            mid = h.get("metadata", {}).get("memory_id", h.get("id"))
+            if mid not in agg or h["score"] > agg[mid]["score"]: agg[mid] = h
+    return sorted(agg.values(), key=lambda x: x["score"], reverse=True)[:top_k]</div>
+    <div class="expand-bar" style="margin-top: 2vh;">
+      <span class="lbl">完整实现：search_vectors_expanded（命名空间过滤 / 候选池分配 / 聚合排序）</span>
+      <button class="code-btn" data-modal="m-expanded">查看完整代码 ↗</button>
+    </div>
+    <span class="pagenum">16</span>
+  </section>
+
+  <!-- 17 收尾：策略组合建议 + 全章回顾 -->
+  <section class="slide" data-screen-label="17 策略组合与回顾">
+    <span class="kicker">8.3.5 · 策略组合建议 · 全章回顾</span>
+    <h2>如何选择检索策略</h2>
+    <p class="sub">还有很多有趣的方法——在实际的使用场景里，去尝试寻找适合问题的解决方案</p>
+    <div class="stages tall" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="stage"><span class="n">一般查询</span><h3>启用 MQE</h3><p>多查询扩展覆盖用词多样性，避免因用词差异遗漏重要信息</p><div class="map">推荐 enable_mqe=True</div></div>
+      <div class="stage"><span class="n">专业领域查询</span><h3>MQE + HyDE</h3><p>HyDE 生成包含领域术语的假设文档，显著提升检索精度</p><div class="map">推荐 同时启用 enable_mqe + enable_hyde</div></div>
+      <div class="stage"><span class="n">性能敏感场景</span><h3>基础检索</h3><p>跳过 LLM 扩展调用，延迟最低；也可以只使用基础检索或仅启用 MQE</p><div class="map">推荐 基础检索 / 仅 MQE</div></div>
+    </div>
+    <div class="formula">本章回顾 · MarkItDown 统一载入 → 结构感知分块 → 统一嵌入存储 → MQE / HyDE → 扩展-检索-合并</div>
+    <span class="pagenum">17</span>
+  </section>
+
+  <!-- 18 本节内容总结 -->
+  <section class="slide" data-screen-label="18 本节内容总结">
+    <span class="kicker">8.3 · 本节内容总结 · 公共图书馆借书证已办妥</span>
+    <h2>五段旅程，一张借书证</h2>
+    <p class="sub">从「什么是 RAG」到「高级检索策略」—— 五小节走完，Agent 正式泡进了公共图书馆</p>
+    <div class="stages tall" style="grid-template-columns: repeat(5, 1fr);">
+      <div class="stage">
+        <span class="n">8.3.1 · 基础概念</span>
+        <h3>是什么</h3>
+        <p>开卷考试三字诀：<b>检索 → 增强 → 生成</b>；两大阶段：数据准备 + 应用查询；三代进化：朴素 → 高级 → 模块化</p>
+        <div class="map">RAG = Retrieval ＋ Augmented ＋ Generation</div>
+      </div>
+      <div class="stage">
+        <span class="n">8.3.2 · 工作原理</span>
+        <h3>怎么转</h3>
+        <p>两条泳道并行：左路 MarkItDown 统一载入，右路查询 → 检索 → 注入 Prompt → 生成。地基：一切外部知识统一转 Markdown</p>
+        <div class="map">图 8.5 · 数据处理 + 查询生成 双流程</div>
+      </div>
+      <div class="stage">
+        <span class="n">8.3.3 · 快速体验</span>
+        <h3>怎么用</h3>
+        <p>三招上手：<b>add_text</b> 入库（带 document_id 标记身份）→ <b>search</b> 检索（limit + min_score 控质量）→ <b>stats</b> 看家底</p>
+        <div class="map">RAGTool · 一行注册进 SimpleAgent</div>
+      </div>
+      <div class="stage">
+        <span class="n">8.3.4 · 架构设计</span>
+        <h3>怎么搭</h3>
+        <p>五层七步分层：用户 → 应用 → 处理 → 存储 → 基础；处理层三段流水线 MarkItDown 转换 → 结构感知分块 → 统一嵌入</p>
+        <div class="map">可插拔 · 嵌入模型随时换</div>
+      </div>
+      <div class="stage">
+        <span class="n">8.3.5 · 高级检索</span>
+        <h3>怎么准</h3>
+        <p>两招扩召回：<b>MQE</b> 多查询扩问法 + <b>HyDE</b> 用答案找答案；统一框架：扩展 → 检索 → 合并，候选池放大 4 倍</p>
+        <div class="map">enable_mqe · enable_hyde · 自由组合</div>
+      </div>
+    </div>
+    <div class="formula">本节一句话 · RAG = 检索 + 增强 + 生成 —— 一张借书证，让 Agent 从「闭卷答题」变成「开卷作答」</div>
+    <span class="pagenum">18</span>
+  </section>
+
+</div>
+
+<!-- 翻页控件 -->
+<div id="nav">
+  <span id="counter">1 / 18</span>
+  <button id="prev" aria-label="上一页"><span class="arrow prev"></span></button>
+  <button id="next" aria-label="下一页"><span class="arrow next"></span></button>
+</div>
+
+<!-- ================= 代码弹窗 ================= -->
+<div class="modal" id="m-quick">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">30 秒上手 RAG 功能<span>8.3.3 完整代码</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">from hello_agents import SimpleAgent, HelloAgentsLLM, ToolRegistry
+from hello_agents.tools import RAGTool
+
+# 创建LLM实例
+llm = HelloAgentsLLM()
+
+# 创建RAG工具
+rag_tool = RAGTool(
+    knowledge_base_path="./knowledge_base",
+    collection_name="test_collection",
+    rag_namespace="test"
+)
+
+tool_registry = ToolRegistry()
+tool_registry.register_tool(rag_tool)
+
+# 创建具有RAG能力的Agent
+agent = SimpleAgent(name="知识助手", llm=llm, tool_registry=tool_registry)
+
+# 体验RAG功能
+# 添加第一个知识
+result1 = rag_tool.execute("add_text",
+                           text="Python是一种高级编程语言，由Guido van Rossum于1991年首次发布。Python的设计哲学强调代码的可读性和简洁的语法。",
+                           document_id="python_intro")
+print(f"知识1: {result1}")
+
+# 添加第二个知识
+result2 = rag_tool.execute("add_text",
+                           text="机器学习是人工智能的一个分支，通过算法让计算机从数据中学习模式。主要包括监督学习、无监督学习和强化学习三种类型。",
+                           document_id="ml_basics")
+print(f"知识2: {result2}")
+
+# 添加第三个知识
+result3 = rag_tool.execute("add_text",
+                           text="RAG（检索增强生成）是一种结合信息检索和文本生成的AI技术。它通过检索相关知识来增强大语言模型的生成能力。",
+                           document_id="rag_concept")
+print(f"知识3: {result3}")
+
+
+print("\n=== 搜索知识 ===")
+result = rag_tool.execute("search",
+                          query="Python编程语言的历史",
+                          limit=3,
+                          min_score=0.1
+                         )
+print(result)
+
+print("\n=== 知识库统计 ===")
+result = rag_tool.execute("stats")
+print(result)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-ragtool">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">RAGTool 类<span>统一入口与管道初始化 · 8.3.4</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">class RAGTool(Tool):
+    """RAG工具
+
+    提供完整的 RAG 能力：
+    - 添加多格式文档（PDF、Office、图片、音频等）
+    - 智能检索与召回
+    - LLM 增强问答
+    - 知识库管理
+    """
+
+    def __init__(
+        self,
+        knowledge_base_path: str = "./knowledge_base",
+        qdrant_url: str = None,
+        qdrant_api_key: str = None,
+        collection_name: str = "rag_knowledge_base",
+        rag_namespace: str = "default"
+    ):
+        # 初始化RAG管道
+        self._pipelines: Dict[str, Dict[str, Any]] = {}
+        self.llm = HelloAgentsLLM()
+
+        # 创建默认管道
+        default_pipeline = create_rag_pipeline(
+            qdrant_url=self.qdrant_url,
+            qdrant_api_key=self.qdrant_api_key,
+            collection_name=self.collection_name,
+            rag_namespace=self.rag_namespace
+        )
+        self._pipelines[self.rag_namespace] = default_pipeline</div>
+  </div>
+</div>
+
+<div class="modal" id="m-markitdown">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">_convert_to_markdown<span>MarkItDown 统一转换 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _convert_to_markdown(path: str) -> str:
+    """
+    Universal document reader using MarkItDown with enhanced PDF processing.
+    核心功能：将任意格式文档转换为Markdown文本
+
+    支持格式：
+    - 文档：PDF、Word、Excel、PowerPoint
+    - 图像：JPG、PNG、GIF（通过OCR）
+    - 音频：MP3、WAV、M4A（通过转录）
+    - 文本：TXT、CSV、JSON、XML、HTML
+    - 代码：Python、JavaScript、Java等
+    """
+    if not os.path.exists(path):
+        return ""
+
+    # 对PDF文件使用增强处理
+    ext = (os.path.splitext(path)[1] or '').lower()
+    if ext == '.pdf':
+        return _enhanced_pdf_processing(path)
+
+    # 其他格式使用MarkItDown统一转换
+    md_instance = _get_markitdown_instance()
+    if md_instance is None:
+        return _fallback_text_reader(path)
+
+    try:
+        result = md_instance.convert(path)
+        markdown_text = getattr(result, "text_content", None)
+        if isinstance(markdown_text, str) and markdown_text.strip():
+            print(f"[RAG] MarkItDown转换成功: {path} -> {len(markdown_text)} chars Markdown")
+            return markdown_text
+        return ""
+    except Exception as e:
+        print(f"[WARNING] MarkItDown转换失败 {path}: {e}")
+        return _fallback_text_reader(path)</div>
+  </div>
+</div>
+
+<div class="modal" id="m-split">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">_split_paragraphs_with_headings<span>标题层次段落分割 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _split_paragraphs_with_headings(text: str) -> List[Dict]:
+    """根据标题层次分割段落，保持语义完整性"""
+    lines = text.splitlines()
+    heading_stack: List[str] = []
+    paragraphs: List[Dict] = []
+    buf: List[str] = []
+    char_pos = 0
+
+    def flush_buf(end_pos: int):
+        if not buf:
+            return
+        content = "\n".join(buf).strip()
+        if not content:
+            return
+        paragraphs.append({
+            "content": content,
+            "heading_path": " > ".join(heading_stack) if heading_stack else None,
+            "start": max(0, end_pos - len(content)),
+            "end": end_pos,
+        })
+
+    for ln in lines:
+        raw = ln
+        if raw.strip().startswith("#"):
+            # 处理标题行
+            flush_buf(char_pos)
+            level = len(raw) - len(raw.lstrip('#'))
+            title = raw.lstrip('#').strip()
+
+            if level <= 0:
+                level = 1
+            if level <= len(heading_stack):
+                heading_stack = heading_stack[:level-1]
+            heading_stack.append(title)
+
+            char_pos += len(raw) + 1
+            continue
+
+        # 段落内容累积
+        if raw.strip() == "":
+            flush_buf(char_pos)
+            buf = []
+        else:
+            buf.append(raw)
+        char_pos += len(raw) + 1
+
+    flush_buf(char_pos)
+
+    if not paragraphs:
+        paragraphs = [{"content": text, "heading_path": None, "start": 0, "end": len(text)}]
+
+    return paragraphs</div>
+  </div>
+</div>
+
+<div class="modal" id="m-chunk">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">_chunk_paragraphs / _approx_token_len<span>Token 分块与中英文估算 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _chunk_paragraphs(paragraphs: List[Dict], chunk_tokens: int, overlap_tokens: int) -> List[Dict]:
+    """基于Token数量的智能分块"""
+    chunks: List[Dict] = []
+    cur: List[Dict] = []
+    cur_tokens = 0
+    i = 0
+
+    while i < len(paragraphs):
+        p = paragraphs[i]
+        p_tokens = _approx_token_len(p["content"]) or 1
+
+        if cur_tokens + p_tokens <= chunk_tokens or not cur:
+            cur.append(p)
+            cur_tokens += p_tokens
+            i += 1
+        else:
+            # 生成当前分块
+            content = "\n\n".join(x["content"] for x in cur)
+            start = cur[0]["start"]
+            end = cur[-1]["end"]
+            heading_path = next((x["heading_path"] for x in reversed(cur) if x.get("heading_path")), None)
+
+            chunks.append({
+                "content": content,
+                "start": start,
+                "end": end,
+                "heading_path": heading_path,
+            })
+
+            # 构建重叠部分
+            if overlap_tokens > 0 and cur:
+                kept: List[Dict] = []
+                kept_tokens = 0
+                for x in reversed(cur):
+                    t = _approx_token_len(x["content"]) or 1
+                    if kept_tokens + t > overlap_tokens:
+                        break
+                    kept.append(x)
+                    kept_tokens += t
+                cur = list(reversed(kept))
+                cur_tokens = kept_tokens
+            else:
+                cur = []
+                cur_tokens = 0
+
+    # 处理最后一个分块
+    if cur:
+        content = "\n\n".join(x["content"] for x in cur)
+        start = cur[0]["start"]
+        end = cur[-1]["end"]
+        heading_path = next((x["heading_path"] for x in reversed(cur) if x.get("heading_path")), None)
+
+        chunks.append({
+            "content": content,
+            "start": start,
+            "end": end,
+            "heading_path": heading_path,
+        })
+
+    return chunks
+
+
+def _approx_token_len(text: str) -> int:
+    """近似估计Token长度，支持中英文混合"""
+    # CJK字符按1 token计算
+    cjk = sum(1 for ch in text if _is_cjk(ch))
+    # 其他字符按空白分词计算
+    non_cjk_tokens = len([t for t in text.split() if t])
+    return cjk + non_cjk_tokens
+
+def _is_cjk(ch: str) -> bool:
+    """判断是否为CJK字符"""
+    code = ord(ch)
+    return (
+        0x4E00 <= code <= 0x9FFF or  # CJK统一汉字
+        0x3400 <= code <= 0x4DBF or  # CJK扩展A
+        0x20000 <= code <= 0x2A6DF or # CJK扩展B
+        0x2A700 <= code <= 0x2B73F or # CJK扩展C
+        0x2B740 <= code <= 0x2B81F or # CJK扩展D
+        0x2B820 <= code <= 0x2CEAF or # CJK扩展E
+        0xF900 <= code <= 0xFAFF      # CJK兼容汉字
+    )</div>
+  </div>
+</div>
+
+<div class="modal" id="m-index">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">index_chunks<span>统一嵌入与 Qdrant 存储 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def index_chunks(
+    store = None,
+    chunks: List[Dict] = None,
+    cache_db: Optional[str] = None,
+    batch_size: int = 64,
+    rag_namespace: str = "default"
+) -> None:
+    """
+    Index markdown chunks with unified embedding and Qdrant storage.
+    Uses百炼 API with fallback to sentence-transformers.
+    """
+    if not chunks:
+        print("[RAG] No chunks to index")
+        return
+
+    # 使用统一嵌入模型
+    embedder = get_text_embedder()
+    dimension = get_dimension(384)
+
+    # 创建默认Qdrant存储
+    if store is None:
+        store = _create_default_vector_store(dimension)
+        print(f"[RAG] Created default Qdrant store with dimension {dimension}")
+
+    # 预处理Markdown文本以获得更好的嵌入质量
+    processed_texts = []
+    for c in chunks:
+        raw_content = c["content"]
+        processed_content = _preprocess_markdown_for_embedding(raw_content)
+        processed_texts.append(processed_content)
+
+    print(f"[RAG] Embedding start: total_texts={len(processed_texts)} batch_size={batch_size}")
+
+    # 批量编码
+    vecs: List[List[float]] = []
+    for i in range(0, len(processed_texts), batch_size):
+        part = processed_texts[i:i+batch_size]
+        try:
+            # 使用统一嵌入器（内部处理缓存）
+            part_vecs = embedder.encode(part)
+
+            # 标准化为List[List[float]]格式
+            if not isinstance(part_vecs, list):
+                if hasattr(part_vecs, "tolist"):
+                    part_vecs = [part_vecs.tolist()]
+                else:
+                    part_vecs = [list(part_vecs)]
+
+            # 处理向量格式和维度
+            for v in part_vecs:
+                try:
+                    if hasattr(v, "tolist"):
+                        v = v.tolist()
+                    v_norm = [float(x) for x in v]
+
+                    # 维度检查和调整
+                    if len(v_norm) != dimension:
+                        print(f"[WARNING] 向量维度异常: 期望{dimension}, 实际{len(v_norm)}")
+                        if len(v_norm) < dimension:
+                            v_norm.extend([0.0] * (dimension - len(v_norm)))
+                        else:
+                            v_norm = v_norm[:dimension]
+
+                    vecs.append(v_norm)
+                except Exception as e:
+                    print(f"[WARNING] 向量转换失败: {e}, 使用零向量")
+                    vecs.append([0.0] * dimension)
+
+        except Exception as e:
+            print(f"[WARNING] Batch {i} encoding failed: {e}")
+            # 实现重试机制
+            # ... 重试逻辑 ...
+
+        print(f"[RAG] Embedding progress: {min(i+batch_size, len(processed_texts))}/{len(processed_texts)}")</div>
+  </div>
+</div>
+
+<div class="modal" id="m-mqe">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">_prompt_mqe<span>多查询扩展 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _prompt_mqe(query: str, n: int) -> List[str]:
+    """使用LLM生成多样化的查询扩展"""
+    try:
+        from ...core.llm import HelloAgentsLLM
+        llm = HelloAgentsLLM()
+        prompt = [
+            {"role": "system", "content": "你是检索查询扩展助手。生成语义等价或互补的多样化查询。使用中文，简短，避免标点。"},
+            {"role": "user", "content": f"原始查询：{query}\n请给出{n}个不同表述的查询，每行一个。"}
+        ]
+        text = llm.invoke(prompt)
+        lines = [ln.strip("- \t") for ln in (text or "").splitlines()]
+        outs = [ln for ln in lines if ln]
+        return outs[:n] or [query]
+    except Exception:
+        return [query]</div>
+  </div>
+</div>
+
+<div class="modal" id="m-hyde">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">_prompt_hyde<span>假设文档嵌入 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def _prompt_hyde(query: str) -> Optional[str]:
+    """生成假设性文档用于改善检索"""
+    try:
+        from ...core.llm import HelloAgentsLLM
+        llm = HelloAgentsLLM()
+        prompt = [
+            {"role": "system", "content": "根据用户问题，先写一段可能的答案性段落，用于向量检索的查询文档（不要分析过程）。"},
+            {"role": "user", "content": f"问题：{query}\n请直接写一段中等长度、客观、包含关键术语的段落。"}
+        ]
+        return llm.invoke(prompt)
+    except Exception:
+        return None</div>
+  </div>
+</div>
+
+<div class="modal" id="m-expanded">
+  <div class="modal-panel">
+    <div class="modal-head"><div class="modal-title">search_vectors_expanded<span>扩展-检索-合并 · 完整实现</span></div><button class="modal-close" aria-label="关闭">×</button></div>
+    <div class="modal-code">def search_vectors_expanded(
+    store = None,
+    query: str = "",
+    top_k: int = 8,
+    rag_namespace: Optional[str] = None,
+    only_rag_data: bool = True,
+    score_threshold: Optional[float] = None,
+    enable_mqe: bool = False,
+    mqe_expansions: int = 2,
+    enable_hyde: bool = False,
+    candidate_pool_multiplier: int = 4,
+) -> List[Dict]:
+    """
+    Search with query expansion using unified embedding and Qdrant.
+    """
+    if not query:
+        return []
+
+    # 创建默认存储
+    if store is None:
+        store = _create_default_vector_store()
+
+    # 查询扩展
+    expansions: List[str] = [query]
+
+    if enable_mqe and mqe_expansions > 0:
+        expansions.extend(_prompt_mqe(query, mqe_expansions))
+    if enable_hyde:
+        hyde_text = _prompt_hyde(query)
+        if hyde_text:
+            expansions.append(hyde_text)
+
+    # 去重和修剪
+    uniq: List[str] = []
+    for e in expansions:
+        if e and e not in uniq:
+            uniq.append(e)
+    expansions = uniq[: max(1, len(uniq))]
+
+    # 分配候选池
+    pool = max(top_k * candidate_pool_multiplier, 20)
+    per = max(1, pool // max(1, len(expansions)))
+
+    # 构建RAG数据过滤器
+    where = {"memory_type": "rag_chunk"}
+    if only_rag_data:
+        where["is_rag_data"] = True
+        where["data_source"] = "rag_pipeline"
+    if rag_namespace:
+        where["rag_namespace"] = rag_namespace
+
+    # 收集所有扩展查询的结果
+    agg: Dict[str, Dict] = {}
+    for q in expansions:
+        qv = embed_query(q)
+        hits = store.search_similar(
+            query_vector=qv,
+            limit=per,
+            score_threshold=score_threshold,
+            where=where
+        )
+        for h in hits:
+            mid = h.get("metadata", {}).get("memory_id", h.get("id"))
+            s = float(h.get("score", 0.0))
+            if mid not in agg or s > float(agg[mid].get("score", 0.0)):
+                agg[mid] = h
+
+    # 按分数排序返回
+    merged = list(agg.values())
+    merged.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+    return merged[:top_k]</div>
+  </div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('counter');
+  let cur = parseInt(localStorage.getItem('rag-deck-pos') || '0', 10);
+  // URL hash 优先（#p5 → 第 5 页），便于分享和定位
+  const m = location.hash.match(/^#p(\d+)$/);
+  if (m) cur = parseInt(m[1], 10) - 1;
+  if (isNaN(cur) || cur < 0 || cur >= slides.length) cur = 0;
+
+  // ---------- 步进呈现 ----------
+  // 要点选择器：页面的大块单元（卡片 / 环节 / 泳道 / 层级）
+  const STEP_SEL = '.stages .stage, .memory-cell, .detail-cols .col, .pf > *, .wf-lane, .arch > *';
+  // 连接线不单独成步，与其后的内容一起亮 / 一起熄
+  const CONN_SEL = '.connector, .wf-down, .edge, .cog-edge';
+  let steps = [];
+  document.body.classList.add('stepping');
+
+  function show(i, dir) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, j) => s.classList.toggle('active', j === cur));
+    steps = Array.from(slides[cur].querySelectorAll(STEP_SEL));
+    // 前进翻页：要点从隐藏开始，逐步点亮；后退或直达（初始加载/#pN）：全部点亮
+    const revealAll = dir !== 1;
+    steps.forEach((el) => el.classList.toggle('on', revealAll));
+    counter.textContent = (cur + 1) + ' / ' + slides.length;
+    localStorage.setItem('rag-deck-pos', String(cur));
+    history.replaceState(null, '', '#p' + (cur + 1));
+  }
+
+  function next() {
+    let i = steps.findIndex((el) => !el.classList.contains('on'));
+    if (i >= 0) {
+      while (i < steps.length) {
+        const el = steps[i];
+        el.classList.add('on');
+        i++;
+        if (!el.matches(CONN_SEL)) break;
+      }
+      return;
+    }
+    show(cur + 1, 1);
+  }
+
+  function prev() {
+    let j = -1;
+    for (let k = steps.length - 1; k >= 0; k--) {
+      if (steps[k].classList.contains('on')) { j = k; break; }
+    }
+    if (j < 0) { show(cur - 1, -1); return; }
+    steps[j].classList.remove('on');
+    let k = j - 1;
+    while (k >= 0 && steps[k].classList.contains('on') && steps[k].matches(CONN_SEL)) {
+      steps[k].classList.remove('on');
+      k--;
+    }
+  }
+
+  document.getElementById('prev').addEventListener('click', prev);
+  document.getElementById('next').addEventListener('click', next);
+
+  // ---------- 代码弹窗 ----------
+  document.querySelectorAll('[data-modal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const modal = document.getElementById(btn.dataset.modal);
+      if (modal) modal.classList.add('open');
+    });
+  });
+  document.querySelectorAll('.modal').forEach((modal) => {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('.modal-close')) {
+        modal.classList.remove('open');
+      }
+    });
+  });
+
+  // ---------- Python 语法高亮（弹窗完整代码） ----------
+  document.querySelectorAll('.modal-code').forEach((el) => {
+    const t = el.textContent.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const re = /(#[^\n]*)|((?:[fFrRbB]{0,2})(?:"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'))|\b(def|class|return|if|elif|else|try|except|finally|for|while|in|not|and|or|is|None|True|False|import|from|as|with|lambda|pass|raise|self|print)\b|\b(\d+(?:\.\d+)?)\b/g;
+    el.innerHTML = t.replace(re, (m, cm, str, kw, num) => {
+      if (cm)  return '<span class="tk-cm">' + cm + '</span>';
+      if (str) return '<span class="tk-str">' + str + '</span>';
+      if (kw)  return '<span class="tk-kw">' + kw + '</span>';
+      if (num) return '<span class="tk-num">' + num + '</span>';
+      return m;
+    });
+  });
+
+  document.addEventListener('keydown', (e) => {
+    // 弹窗打开时：Esc 关闭，屏蔽翻页键
+    const open = document.querySelector('.modal.open');
+    if (open) {
+      if (e.key === 'Escape') open.classList.remove('open');
+      return;
+    }
+    if (e.key === 'ArrowRight' || e.key === ' ') next();
+    if (e.key === 'ArrowLeft') prev();
+  });
+
+  show(cur);
+</script>
+
+</body>
+</html>
